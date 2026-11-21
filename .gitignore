@@ -44,3 +44,5 @@ next-env.d.ts
 
 # local data
 .data
+.venv-neural/
+training/runs/

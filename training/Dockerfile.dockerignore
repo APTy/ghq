@@ -1,0 +1,11 @@
+# Allow only the training sources and the authoritative Python rules/search.
+**
+!requirements-neural.txt
+!ghqnet/
+!ghqnet/*.py
+!public/
+!public/engine.py
+!public/search.py
+!training/
+!training/Dockerfile
+!training/Dockerfile.dockerignore
