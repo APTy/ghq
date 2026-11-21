@@ -1,5 +1,5 @@
-import { GameoverState } from "./engine";
-import { GameoverStatus, Player, Turn } from "./engine-v2";
+import type { GameoverReason, GameoverState } from "./engine";
+import type { Player, Turn } from "./engine-v2";
 import { allowedMoveFromUci, allowedMoveToUci } from "./notation-uci";
 
 export function createPGN(turns: Turn[]): string {
@@ -7,6 +7,7 @@ export function createPGN(turns: Turn[]): string {
 }
 
 export function turnToString(turn: Turn): string {
+  const moves = turn.moves.map((move) => allowedMoveToUci(move)).join(" ");
   if (turn.status) {
     let outcome = "1/2-1/2";
     if (turn.winner === "BLUE") {
@@ -14,52 +15,45 @@ export function turnToString(turn: Turn): string {
     } else if (turn.winner === "RED") {
       outcome = "1-0";
     }
+    // A terminal capture or draw acceptance still belongs to its played turn.
+    // Keep its actions and clock in the same record so reload can replay them.
+    if (turn.moves.length) {
+      return `${turn.turn}. ${moves} ${outcome} {[%emt ${turn.elapsedSecs}] [%sts ${turn.status}]}`;
+    }
     return `${outcome} {[%sts ${turn.status}]}`;
   }
-  return `${turn.turn}. ${turn.moves
-    .map((move) => allowedMoveToUci(move))
-    .join(" ")} {[%emt ${turn.elapsedSecs}]}`;
+  return `${turn.turn}. ${moves} {[%emt ${turn.elapsedSecs}]}`;
 }
 
-export function stringToTurn(string: string): Turn {
-  const commentMatch = string.match(/\{([^}]*)\}/);
-  let elapsedSecs = 0;
-
-  if (commentMatch) {
-    const comment = commentMatch[1];
-
-    const stsMatch = comment.match(/\[%sts\s+([\w-]+)\]/);
-    if (stsMatch) {
-      const status = stsMatch[1] as
-        | "resign"
-        | "timeout"
-        | "hq-capture"
-        | "double-skip";
-      const outcome = string.split("{")[0].trim();
-      const turnNumberMatch = string.match(/^\d+/);
-      const turnNumber = turnNumberMatch ? parseInt(turnNumberMatch[0]) : 1;
-      return gameEndTurn(turnNumber, outcome, status);
-    }
-
-    const emtMatch = comment.match(/\[%emt\s+([\d.]+)\]/);
-    if (emtMatch) {
-      elapsedSecs = parseFloat(emtMatch[1]);
-    }
-  }
-
-  const movesSection = string.split("{")[0].trim();
-  const turnNumberMatch = movesSection.match(/^\d+/);
-  const turnNumber = turnNumberMatch ? parseInt(turnNumberMatch[0]) : 1;
-  const movesWithoutTurnNumber = movesSection.replace(/^\d+\.\s*/, "");
-  const uciMoves = movesWithoutTurnNumber.split(/\s+/).filter((m) => m !== "");
-
-  const moves = uciMoves.map((uci) => allowedMoveFromUci(uci));
-
+function parseTurn(line: string, turn: number): Turn {
+  const comments = Array.from(
+    line.matchAll(/\{([^}]*)\}/g),
+    (match) => match[1]
+  ).join(" ");
+  const elapsedMatch = comments.match(/\[%emt\s+([\d.]+)\]/);
+  const statusMatch = comments.match(/\[%sts\s+([\w-]+)\]/);
+  const tokens = line
+    .replace(/\{[^}]*\}/g, "")
+    .trim()
+    .replace(/^\d+\.\s*/, "")
+    .split(/\s+/)
+    .filter(Boolean);
+  const outcome = tokens[tokens.length - 1];
+  if (["1-0", "0-1", "1/2-1/2"].includes(outcome)) tokens.pop();
+  const terminal = statusMatch
+    ? gameEndTurn(turn, outcome, statusMatch[1] as GameoverReason)
+    : undefined;
   return {
-    turn: turnNumber,
-    moves,
-    elapsedSecs,
+    ...(terminal ?? {}),
+    turn,
+    moves: tokens.map(allowedMoveFromUci),
+    elapsedSecs: elapsedMatch ? parseFloat(elapsedMatch[1]) : 0,
   };
+}
+
+export function stringToTurn(line: string): Turn {
+  const number = line.trim().match(/^(\d+)\./);
+  return parseTurn(line, number ? parseInt(number[1]) : 1);
 }
 
 export function pgnToTurns(pgn: string): Turn[] {
@@ -68,50 +62,13 @@ export function pgnToTurns(pgn: string): Turn[] {
     .split("\n")
     .filter((line) => line.trim() !== "");
 
-  return lines.map((line, index) => {
-    const commentMatch = line.match(/\{([^}]*)\}/);
-    let elapsedSecs = 0;
-
-    if (commentMatch) {
-      const comment = commentMatch[1];
-
-      const stsMatch = comment.match(/\[%sts\s+([\w-]+)\]/);
-      if (stsMatch) {
-        const status = stsMatch[1] as
-          | "resign"
-          | "timeout"
-          | "hq-capture"
-          | "double-skip";
-        const outcome = line.split("{")[0].trim();
-        return gameEndTurn(index + 1, outcome, status);
-      }
-
-      const emtMatch = comment.match(/\[%emt\s+([\d.]+)\]/);
-      if (emtMatch) {
-        elapsedSecs = parseFloat(emtMatch[1]);
-      }
-    }
-
-    const movesSection = line.split("{")[0].trim();
-    const movesWithoutTurnNumber = movesSection.replace(/^\d+\.\s*/, "");
-    const uciMoves = movesWithoutTurnNumber
-      .split(/\s+/)
-      .filter((m) => m !== "");
-
-    const moves = uciMoves.map((uci) => allowedMoveFromUci(uci));
-
-    return {
-      turn: index + 1,
-      moves,
-      elapsedSecs,
-    };
-  });
+  return lines.map((line, index) => parseTurn(line, index + 1));
 }
 
 export function gameEndTurn(
   turn: number,
   outcome: string,
-  status: "resign" | "timeout" | "hq-capture" | "double-skip"
+  status: GameoverReason
 ): Turn {
   const baseTurn: Turn = {
     turn,

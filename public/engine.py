@@ -261,7 +261,7 @@ def scan_reversed(bb: Bitboard) -> typing.Iterator[Square]:
         bb ^= BB_SQUARES[r]
 
 def popcount(bb: Bitboard) -> int:
-    return bin(bb).count("1")
+    return bb.bit_count()
 
 def flip_vertical(bb: Bitboard) -> Bitboard:
     # https://www.chessprogramming.org/Flipping_Mirroring_and_Rotating#FlipVertically
@@ -1088,7 +1088,7 @@ class BaseBoard:
         self.occupied ^= mask
         self.occupied_co[color] ^= mask
 
-        self.set_orientation(square, orientation)
+        self.set_orientation(square, orientation if is_artillery(piece_type) else None)
 
         if is_artillery(piece_type):
             self.bombarded_co[color] = self.get_bombarded_squares(color)
@@ -1186,11 +1186,27 @@ class BaseBoard:
         self.reserves[color].remove(piece_type, count)
 
     def _transposition_key(self) -> Hashable:
-        return (self.infantry, self.armored_infantry, self.airborne_infantry,
+        """Identify the complete position, including decisions left in this turn.
+
+        Piece placement alone is not sufficient in GHQ: reserves, already-used
+        pieces and pending automatic captures all change the legal actions.
+        History is omitted because the rules do not use repetition or a move
+        clock. The cached attack masks are included because legality reads them.
+        """
+        artillery = self.occupied & self._all_artillery()
+        return (self.occupied, self.infantry, self.armored_infantry, self.airborne_infantry,
                 self.artillery, self.armored_artillery, self.heavy_artillery,
                 self.hq, self.occupied_co[RED], self.occupied_co[BLUE],
-                self.turn, self.turn_pieces,
-                self.orientation_bit0, self.orientation_bit1, self.orientation_bit2)
+                tuple(self.reserves[RED].get_count(pt) for pt in PIECE_TYPES),
+                tuple(self.reserves[BLUE].get_count(pt) for pt in PIECE_TYPES),
+                self.turn, self.turn_moves, self.turn_auto_moves, self.turn_pieces,
+                self.orientation_bit0 & artillery,
+                self.orientation_bit1 & artillery,
+                self.orientation_bit2 & artillery,
+                tuple(self.bombarded_co), tuple(self.adjacent_infantry_squares_co),
+                self.free_capture_clusters, self.free_capture_enemies,
+                self.free_capture_num_allowed,
+                self.did_offer_draw, self.did_accept_draw)
 
     def __repr__(self) -> str:
         return f"BaseBoard('{self.board_fen()}')"
@@ -1292,6 +1308,10 @@ class BaseBoard:
         self.orientation_bit0 = f(self.orientation_bit0)
         self.orientation_bit1 = f(self.orientation_bit1)
         self.orientation_bit2 = f(self.orientation_bit2)
+        self.turn_pieces = f(self.turn_pieces)
+        self.free_capture_clusters = f(self.free_capture_clusters)
+        self.free_capture_enemies = f(self.free_capture_enemies)
+        self.free_capture_num_allowed = f(self.free_capture_num_allowed)
 
     def apply_orientation_transform(self, f: Callable[[int, int, int], Tuple[int, int, int]]) -> None:
         # Get all pieces that have an orientation
@@ -1303,8 +1323,12 @@ class BaseBoard:
         bit1 = self.orientation_bit1 & pieces_with_orientation
         bit2 = self.orientation_bit2 & pieces_with_orientation
 
-        # Apply the transform to each bit
-        self.orientation_bit0, self.orientation_bit1, self.orientation_bit2 = f(bit0, bit1, bit2)
+        # Rotation may complement an entire bitboard. Only artillery squares
+        # may retain those new bits; otherwise empty squares acquire directions.
+        bit0, bit1, bit2 = f(bit0, bit1, bit2)
+        self.orientation_bit0 = bit0 & pieces_with_orientation
+        self.orientation_bit1 = bit1 & pieces_with_orientation
+        self.orientation_bit2 = bit2 & pieces_with_orientation
 
     def transform(self, f: Callable[[Bitboard], Bitboard]) -> "BaseBoard":
         """
@@ -1338,7 +1362,7 @@ class BaseBoard:
         """
         Returns a mirrored copy of the board (without move stack).
 
-        The board is mirrored vertically and piece colors are swapped, so that
+        The board is rotated 180 degrees and piece colors are swapped, so that
         the position is equivalent modulo color.
 
         Alternatively, :func:`~BaseBoard.apply_mirror()` can be used
@@ -1445,11 +1469,11 @@ class BaseBoard:
         """Set the orientation of a piece at a given square."""
         mask = BB_SQUARES[square] & BB_ALL
 
+        # Replace the previous value, including bits that become zero.
+        self.orientation_bit0 &= ~mask
+        self.orientation_bit1 &= ~mask
+        self.orientation_bit2 &= ~mask
         if orientation is None:
-            # Clear orientation bits
-            self.orientation_bit0 &= ~mask
-            self.orientation_bit1 &= ~mask
-            self.orientation_bit2 &= ~mask
             return
 
         # Set individual orientation bits

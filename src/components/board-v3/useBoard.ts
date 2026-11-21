@@ -17,6 +17,7 @@ import {
 } from "@/game/audio";
 import { GameClient } from "@/game/engine-v2";
 import { Settings } from "./SettingsMenu";
+import { toast } from "sonner";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const ANIMATION_DELAY = 250;
@@ -159,20 +160,38 @@ export default function useBoard({
     }
   }, [game.turn]);
 
-  // If the move limit has been reached and user has confirm disabled, automatically skip the turn.
-  const [isEndingTurn, setIsEndingTurn] = useState(false);
+  // Only confirm a completed turn automatically; never skip a fresh turn.
   useEffect(() => {
-    if (game.isMyTurn() && !settings.confirmTurn && !isEndingTurn) {
-      setIsEndingTurn(true);
-      setTimeout(() => {
-        game.endTurn();
+    if (
+      game.isReplayMode ||
+      game.gameover ||
+      !game.needsTurnConfirmation ||
+      settings.confirmTurn ||
+      !game.canEndTurn()
+    )
+      return;
 
-        setTimeout(() => {
-          setIsEndingTurn(false);
-        }, 1000); // NB(tyler): wait 1 second to prevent accidental skips
-      }, 1);
-    }
-  }, [game.needsTurnConfirmation]);
+    let active = true;
+    const timer = setTimeout(async () => {
+      if (!game.canEndTurn()) return;
+      try {
+        await game.endTurn();
+      } catch (error) {
+        if (!active || (error instanceof Error && error.name === "AbortError"))
+          return;
+        toast.error(
+          "There was a problem sending your turn: " +
+            (error instanceof Error ? error.message : "Unknown")
+        );
+      }
+    }, 1);
+
+    // A failed request keeps the completed turn available for manual retry.
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [game, game.needsTurnConfirmation, game.gameover, settings.confirmTurn]);
 
   return {
     animatedBoard,

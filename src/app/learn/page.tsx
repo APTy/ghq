@@ -127,7 +127,7 @@ export default function Page() {
 
   return (
     <div>
-      <GHQBoardV3 isPassAndPlayMode={true} fen={boardFen} />
+      <GHQBoardV3 isPassAndPlayMode={true} isLearning fen={boardFen} />
     </div>
   );
 }

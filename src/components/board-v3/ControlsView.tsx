@@ -49,22 +49,19 @@ export default function ControlsView({
     }
   }, [game]);
 
-  const canSkip = useMemo(() => {
-    if (justSkipped) {
-      return false;
-    }
-    return game.canEndTurn();
-  }, [game.moves, justSkipped]);
+  const canSkip = !justSkipped && game.canEndTurn();
   const doSkip = useCallback(async () => {
     if (canSkip) {
       setJustSkipped(true);
       try {
         await game.endTurn();
       } catch (error) {
-        toast.error(
-          "There was a problem sending your turn: " +
-            ((error as Error).message || "Unknown")
-        );
+        if (!(error instanceof Error && error.name === "AbortError")) {
+          toast.error(
+            "There was a problem sending your turn: " +
+              ((error as Error).message || "Unknown")
+          );
+        }
       }
 
       setTimeout(() => {

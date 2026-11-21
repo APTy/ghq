@@ -3,7 +3,7 @@
 import React, { useMemo } from "react";
 import classNames from "classnames";
 import { HistoryLog } from "./HistoryLog";
-import EvalBar from "../../game/EvalBar";
+import AnalysisPanel from "./AnalysisPanel";
 
 import Header from "@/components/Header";
 import HomeButton from "./HomeButton";
@@ -27,6 +27,7 @@ export default function Sidebar({
   className,
   settings,
   setSettings,
+  isLearning = false,
 }: {
   // this is the realGame
   game: GameClient;
@@ -38,6 +39,7 @@ export default function Sidebar({
   className: string;
   settings: Settings;
   setSettings: (settings: Settings) => void;
+  isLearning?: boolean;
 }) {
   const currentPlayerTurn = useMemo(
     () => game.currentPlayerTurn(),
@@ -49,31 +51,29 @@ export default function Sidebar({
     [game.moves, game.turn]
   );
 
-  const historyEval = useMemo(() => {
-    return (
-      <>
-        <EvalBar evalValue={game.eval()} />
-        <HistoryLog
-          game={game}
-          gameover={gameover}
-          seek={seek}
-          seekIndex={seekIndex}
-        />
-      </>
-    );
-  }, [game.moves, seekIndex]);
+  // Seeking in an unfinished game is not post-game analysis. Gate on the
+  // real game's outcome, never the replay position or pass-and-play setting.
+  const showAnalysis = Boolean(gameover) || (isLearning && !game.isOnline);
 
   return (
     <div
       className={classNames(
-        "w-full md:w-[450px] bg-white/80 h-screen shadow-lg transition-shadow duration-300 shadow-slate-400 space-y-3",
+        "w-full md:w-[450px] bg-white/80 h-screen overflow-y-auto shadow-lg transition-shadow duration-300 shadow-slate-400 space-y-3",
         className
       )}
     >
       <div className="hidden sm:block">
         <Header />
       </div>
-      {historyEval}
+      {showAnalysis && (
+        <AnalysisPanel state={activeGame.analysisState()} isReplay={seekIndex !== -1} />
+      )}
+      <HistoryLog
+        game={game}
+        gameover={gameover}
+        seek={seek}
+        seekIndex={seekIndex}
+      />
       {gameover ? (
         <div className="flex flex-col items-center justify-center gap-0 justify-center items-center">
           <h2

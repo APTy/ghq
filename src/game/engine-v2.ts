@@ -736,7 +736,7 @@ export class GameClient {
   }
 
   getAllowedMoves(): AllowedMove[] {
-    if (!this.isMyTurn() || this.needsTurnConfirmation) {
+    if (this.isSendingTurn || !this.isMyTurn() || this.needsTurnConfirmation) {
       return [];
     }
     const moves = this.board().generate_legal_moves();
@@ -850,7 +850,7 @@ export class GameClient {
   }
 
   canUndo(): boolean {
-    return this.isMyTurn() && this.numMovesThisTurn() > 0;
+    return !this.isSendingTurn && this.isMyTurn() && this.numMovesThisTurn() > 0;
   }
 
   undo() {
@@ -877,7 +877,7 @@ export class GameClient {
   }
 
   canRedo(): boolean {
-    return this.isMyTurn() && this.undoMoves.length > 0;
+    return !this.isSendingTurn && this.isMyTurn() && this.undoMoves.length > 0;
   }
 
   redo() {
@@ -892,12 +892,16 @@ export class GameClient {
   }
 
   canEndTurn(): boolean {
-    return this.isMyTurn();
+    return !this.isSendingTurn && this.isMyTurn();
   }
 
   async endTurn() {
-    if (!this.needsTurnConfirmation) {
+    if (this.isSendingTurn) return;
+    // Capturing HQ may finish the game before action three. Preserve that
+    // terminal action as the end of the turn instead of appending a Skip.
+    if (!this.needsTurnConfirmation && !this.board().outcome()) {
       this._push({ name: "Skip", args: [] });
+      this.needsTurnConfirmation = true;
     }
 
     this.getTurn().elapsedSecs =
@@ -920,6 +924,8 @@ export class GameClient {
       const gameover = this.getGameover();
       if (gameover) {
         this.gameover = gameover;
+        this.getTurn().status = gameover.reason;
+        this.getTurn().winner = gameover.winner;
         this.notify();
       }
     }
@@ -928,7 +934,7 @@ export class GameClient {
   }
 
   pushTurn(turn: Turn) {
-    if (turn.status && turn.winner) {
+    if (turn.status) {
       this.gameover = {
         status: turn.winner ? "WIN" : "DRAW",
         winner: turn.winner,
@@ -940,7 +946,12 @@ export class GameClient {
       this.push(move);
     }
 
-    this.getTurn().elapsedSecs = turn.elapsedSecs;
+    const storedTurn = this.getTurn();
+    storedTurn.elapsedSecs = turn.elapsedSecs;
+    if (turn.status) {
+      storedTurn.status = turn.status;
+      storedTurn.winner = turn.winner;
+    }
 
     this.finishTurn();
   }
@@ -1046,6 +1057,11 @@ export class GameClient {
 
   fen(): string {
     return this.board().board_fen();
+  }
+
+  /** Includes reserves, remaining actions, used pieces, and pending captures. */
+  analysisState(): string {
+    return this.board().serialize();
   }
 
   pgn(): string {

@@ -20,16 +20,32 @@ import GameLoader from "./GameLoader";
 import { MatchV3 } from "@/lib/types";
 import { useUsers } from "./useUsers";
 import { GameoverReason, GameoverState } from "@/game/engine";
+import { config } from "@/lib/config";
 
 export interface GHQBoardV3Props extends GameClientOptions {
   bot?: boolean;
   credentials?: string;
   match?: MatchV3;
+  isLearning?: boolean;
 }
 
 export function GHQBoardV3(opts: GHQBoardV3Props) {
+  return config.useClerk ? <AuthenticatedBoard opts={opts} /> : <BoardContent opts={opts} auth={localAuth} />;
+}
+
+const localAuth = { isSignedIn: false, getToken: async () => null };
+
+function AuthenticatedBoard({ opts }: { opts: GHQBoardV3Props }) {
+  const auth = useAuth();
+  return <BoardContent opts={opts} auth={auth} />;
+}
+
+function BoardContent({ opts, auth }: {
+  opts: GHQBoardV3Props;
+  auth: { isSignedIn?: boolean; getToken: () => Promise<string | null> };
+}) {
   const { engine } = useEngine();
-  const { isSignedIn, getToken } = useAuth();
+  const { isSignedIn, getToken } = auth;
   const [multiplayer, setMultiplayer] = useState<Multiplayer | undefined>(
     undefined
   );
@@ -44,7 +60,7 @@ export function GHQBoardV3(opts: GHQBoardV3Props) {
     if (opts.bot && opts.id) {
       const multiplayer = new BotMultiplayer(engine, opts.id, opts.fen);
       setMultiplayer(multiplayer);
-      return;
+      return () => multiplayer.dispose();
     }
 
     if (
@@ -121,6 +137,7 @@ export function GHQBoardV3(opts: GHQBoardV3Props) {
           className="order-3 md:order-1 mt-8 md:mt-0"
           settings={settings}
           setSettings={setSettings}
+          isLearning={opts.isLearning}
         />
       )}
       <PlayArea

@@ -3,6 +3,8 @@ import { allowedMoveFromUci, allowedMoveToUci } from "./notation-uci";
 import { ghqFetch, SendTurnRequest } from "@/lib/api";
 import { createPGN, pgnToTurns } from "./pgn";
 import { API_URL } from "@/app/live/config";
+import { CpuAnalysisClient } from "./analysis";
+import type { GameoverReason } from "./engine";
 
 export type OnTurnPlayedCallback = (turn: Turn) => void;
 
@@ -59,8 +61,16 @@ export class BotMultiplayer implements Multiplayer {
   private board: PythonBoard;
   private _callbacks: OnTurnPlayedCallback[];
   private _id: string;
+  private disposed = false;
+  private replyTimer?: ReturnType<typeof setTimeout>;
+  private sending = false;
 
-  constructor(private engine: GameEngine, id: string, private fen?: string) {
+  constructor(
+    private engine: GameEngine,
+    id: string,
+    private fen?: string,
+    private analysis: Pick<CpuAnalysisClient, "analyze" | "dispose"> = new CpuAnalysisClient()
+  ) {
     this.board = this.engine.BaseBoard(fen);
     this._id = id;
     this._callbacks = [];
@@ -123,69 +133,98 @@ export class BotMultiplayer implements Multiplayer {
   }
 
   async sendTurn(turn: Turn): Promise<void> {
+    if (this.disposed) throw new DOMException("Bot closed", "AbortError");
+    if (turn.status) {
+      this.dispose();
+      this.appendGameTurn(this._id, turn);
+      return;
+    }
+    if (this.sending) throw new Error("The bot is already thinking.");
+    if (this._callbacks.length === 0) throw new Error("onTurnPlayed callback not set");
+    this.sending = true;
+    try {
+      await this.calculateReply(turn);
+    } finally {
+      this.sending = false;
+    }
+  }
+
+  private async calculateReply(turn: Turn): Promise<void> {
+    // Stage the whole exchange so a failed worker request can be retried without
+    // applying the human's turn or appending history twice.
+    const board = this.engine.BaseBoard.deserialize(this.board.serialize());
     for (const move of turn.moves) {
       const allowedMove = this.engine.Move.from_uci(allowedMoveToUci(move));
-      this.board.push(allowedMove);
+      if (!board.is_legal(allowedMove)) throw new Error("The submitted turn contains an illegal move.");
+      board.push(allowedMove);
     }
 
-    this.appendGameTurn(this._id, turn);
-
-    if (this._callbacks.length === 0) {
-      throw new Error("onTurnPlayed callback not set");
-    }
-
-    if (this.board.outcome() !== undefined) {
+    const humanOutcome = board.outcome();
+    if (humanOutcome || board.is_red_turn()) {
+      if (humanOutcome) {
+        turn = {
+          ...turn,
+          status: humanOutcome.termination as GameoverReason,
+          winner: humanOutcome.winner === false ? "RED" : humanOutcome.winner === true ? "BLUE" : undefined,
+        };
+      }
+      this.board = board;
+      this.appendGameTurn(this._id, turn);
       return;
-    }
-
-    if (this.board.is_red_turn()) {
-      return;
-      // return [
-      //   {
-      //     move: "Skip",
-      //     args: [],
-      //   },
-      // ];
     }
 
     const replyTurn: Turn = {
       turn: turn.turn + 1,
       moves: [],
-      elapsedSecs: 0.1,
+      elapsedSecs: 0,
     };
-    const player = this.engine.ValuePlayer(this.board);
-    for (let i = 0; i < 3; i++) {
-      // const start = Date.now();
-      const move = player.get_next_move();
-
-      if (move.auto_capture_type) {
-        // If the move is an auto capture, we don't want to count it as a move,
-        // so we decrement the index.
-        i = i - 1;
-      }
-
-      // Apply to the board
-      this.board.push(move);
-
-      // Add to the reply turn
-      replyTurn.moves.push(allowedMoveFromUci(move.uci()));
-
-      // console.log(`Took ${Date.now() - start}ms`);
-      if (move.name === "Skip") {
-        break;
+    const started = performance.now();
+    // Search normally returns the entire remaining turn. Re-search a partial
+    // fallback if its time budget expired during turn generation.
+    for (let attempt = 0; attempt < 8 && board.is_blue_turn() && !board.outcome(); attempt++) {
+      const result = await this.analysis.analyze(board.serialize(), {
+        timeMs: 2400,
+        maxDepth: 3,
+        beamWidth: 8,
+        multiPv: 1,
+      });
+      if (this.disposed) throw new DOMException("Bot closed", "AbortError");
+      const plan = result.turnMoves.length ? result.turnMoves : result.bestMove ? [result.bestMove] : [];
+      if (!plan.length) throw new Error("The bot did not return a legal turn. Please try again.");
+      for (const uci of plan) {
+        if (!board.is_blue_turn() || board.outcome()) break;
+        const move = this.engine.Move.from_uci(uci);
+        if (!board.is_legal(move)) throw new Error("The bot returned an illegal move. Please try again.");
+        board.push(move);
+        replyTurn.moves.push(allowedMoveFromUci(uci));
       }
     }
-
+    if (board.is_blue_turn() && !board.outcome()) throw new Error("The bot could not finish its turn. Please try again.");
+    const outcome = board.outcome();
+    if (outcome) {
+      replyTurn.status = outcome.termination as GameoverReason;
+      replyTurn.winner = outcome.winner === false ? "RED" : outcome.winner === true ? "BLUE" : undefined;
+    }
+    replyTurn.elapsedSecs = (performance.now() - started) / 1000;
+    this.board = board;
+    this.appendGameTurn(this._id, turn);
     this.appendGameTurn(this._id, replyTurn);
 
-    // do this in the background
-    setTimeout(() => {
-      this._callbacks.forEach((callback) => callback(replyTurn));
-    }, 1);
+    // Let GameClient finish the human's turn before delivering the reply.
+    this.replyTimer = setTimeout(() => {
+      if (!this.disposed) this._callbacks.forEach((callback) => callback(replyTurn));
+    }, 0);
   }
 
   onTurnPlayed(callback: OnTurnPlayedCallback): void {
     this._callbacks.push(callback);
+  }
+
+  dispose() {
+    this.disposed = true;
+    this.analysis.dispose();
+    clearTimeout(this.replyTimer);
+    this._callbacks = [];
   }
 }
 

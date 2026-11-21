@@ -193,7 +193,9 @@ const pgn4 = `
 `;
 
 import { describe, it, expect } from "@jest/globals";
-import { pgnToTurns, createPGN } from "./pgn";
+import { pgnToTurns, createPGN, stringToTurn, turnToString } from "./pgn";
+import type { Turn } from "./engine-v2";
+import { allowedMoveFromUci } from "./notation-uci";
 
 describe("pgnToTurns", () => {
   it("parses simple PGN with resignation", () => {
@@ -211,7 +213,7 @@ describe("pgnToTurns", () => {
 
     expect(turns[2].turn).toBe(3);
     expect(turns[2].moves).toHaveLength(0);
-    expect(turns[2].winner).toBe("1");
+    expect(turns[2].winner).toBe("BLUE");
   });
 
   it("parses complex multi-move PGN", () => {
@@ -279,7 +281,7 @@ describe("pgnToTurns", () => {
     const turns1 = pgnToTurns(pgn1);
     const resignTurn1 = turns1.find((turn) => turn.status === "resign");
     expect(resignTurn1).toBeDefined();
-    expect(resignTurn1?.winner).toBe("1");
+    expect(resignTurn1?.winner).toBe("BLUE");
     expect(resignTurn1?.moves).toHaveLength(0);
   });
 
@@ -288,7 +290,7 @@ describe("pgnToTurns", () => {
     const lastTurn = turns[turns.length - 1];
 
     expect(lastTurn.status).toBe("timeout");
-    expect(lastTurn.winner).toBe("0");
+    expect(lastTurn.winner).toBe("RED");
     expect(lastTurn.moves).toHaveLength(0);
   });
 
@@ -297,7 +299,7 @@ describe("pgnToTurns", () => {
     const lastTurn = turns[turns.length - 1];
 
     expect(lastTurn.status).toBe("hq-capture");
-    expect(lastTurn.winner).toBe("1");
+    expect(lastTurn.winner).toBe("BLUE");
     expect(lastTurn.moves).toHaveLength(0);
   });
 
@@ -315,7 +317,7 @@ describe("pgnToTurns", () => {
     const resignTurn = turns[turns.length - 1];
 
     expect(resignTurn.status).toBe("resign");
-    expect(resignTurn.winner).toBe("1");
+    expect(resignTurn.winner).toBe("BLUE");
   });
 
   it("round-trips PGN correctly for all outcomes", () => {
@@ -339,5 +341,44 @@ describe("pgnToTurns", () => {
         expectedStatus
       );
     });
+  });
+
+  it.each([
+    { status: "hq-capture", winner: "BLUE", moves: ["sba2", "a8a7xb1"] },
+    { status: "hq-capture", winner: "RED", moves: ["a1a2xb8"] },
+    { status: "double-skip", winner: undefined, moves: ["skip"] },
+  ] as const)(
+    "preserves final actions, clock, and outcome for $status / $winner",
+    ({ status, winner, moves }) => {
+      const final: Turn = {
+        turn: 2,
+        moves: moves.map(allowedMoveFromUci),
+        elapsedSecs: 2.4,
+        status,
+        ...(winner ? { winner } : {}),
+      };
+      const first: Turn = {
+        turn: 1,
+        moves: [allowedMoveFromUci("skip")],
+        elapsedSecs: 1,
+      };
+      const encoded = createPGN([first, final]);
+      expect(encoded.split("\n")).toHaveLength(2);
+      expect(pgnToTurns(encoded)).toEqual([first, final]);
+      expect(stringToTurn(turnToString(final))).toEqual(final);
+      expect(createPGN(pgnToTurns(encoded))).toBe(encoded);
+    }
+  );
+
+  it("keeps legacy result-only records readable and unchanged", () => {
+    for (const line of [
+      "0-1 {[%sts resign]}",
+      "1-0 {[%sts timeout]}",
+      "1/2-1/2 {[%sts double-skip]}",
+    ]) {
+      const turn = stringToTurn(line);
+      expect(turn.moves).toEqual([]);
+      expect(turnToString(turn)).toBe(line);
+    }
   });
 });

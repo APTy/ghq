@@ -1,0 +1,112 @@
+import { describe, expect, it } from "@jest/globals";
+import { GameClient, type GameEngine, type Turn } from "./engine-v2";
+import { allowedMoveFromUci } from "./notation-uci";
+import { pgnToTurns } from "./pgn";
+import type { Multiplayer } from "./engine-v2-multiplayer";
+
+declare const jest: typeof import("@jest/globals").jest;
+jest.mock("@/lib/console", () => ({ printWelcome: () => undefined }));
+
+// Rule legality lives in Python tests; this models only turn and outcome state
+// needed to verify that GameClient retains terminal records in its exports.
+function fakeEngine(): GameEngine {
+  const create = (serialized?: string) => {
+    const state = serialized
+      ? JSON.parse(serialized)
+      : { blue: false, count: 0, winner: undefined };
+    return {
+      serialize: () => JSON.stringify(state),
+      is_red_turn: () => !state.blue,
+      outcome: () =>
+        state.winner
+          ? { winner: state.winner === "BLUE", termination: "hq-capture" }
+          : undefined,
+      push: (move: { uci: () => string }) => {
+        if (move.uci().includes("xb8")) state.winner = "RED";
+        if (move.uci() === "skip" || ++state.count === 3) {
+          state.blue = !state.blue;
+          state.count = 0;
+        }
+      },
+    };
+  };
+  return {
+    BaseBoard: Object.assign(() => create(), { deserialize: create }),
+    Move: { from_uci: (uci: string) => ({ uci: () => uci }) },
+  } as unknown as GameEngine;
+}
+
+describe("GameClient terminal history", () => {
+  it.each([
+    { status: "hq-capture", winner: "BLUE", moves: ["a8a7xb1"] },
+    { status: "double-skip", winner: undefined, moves: ["skip"] },
+  ] as const)(
+    "exports received $status with its moves and outcome",
+    ({ status, winner, moves }) => {
+      const game = new GameClient({
+        engine: fakeEngine(),
+        bot: true,
+        playerId: "0",
+      });
+      const turn: Turn = {
+        turn: 1,
+        moves: moves.map(allowedMoveFromUci),
+        elapsedSecs: 2.4,
+        status,
+        winner,
+      };
+      game.pushTurn(turn);
+      expect(pgnToTurns(game.pgn())).toEqual([turn]);
+      expect(game.gameover).toMatchObject({
+        status: winner ? "WIN" : "DRAW",
+        reason: status,
+        winner,
+      });
+      expect(game.turn).toBe(2);
+    }
+  );
+
+  it("exports a locally detected terminal outcome", async () => {
+    const game = new GameClient({
+      engine: fakeEngine(),
+      bot: true,
+      playerId: "0",
+    });
+    game.push(allowedMoveFromUci("a1a2xb8"));
+    await game.endTurn();
+    const [saved] = pgnToTurns(game.pgn());
+    expect(saved.status).toBe("hq-capture");
+    expect(saved.winner).toBe("RED");
+    expect(saved.moves).toEqual([allowedMoveFromUci("a1a2xb8")]);
+    expect(game.gameover?.winner).toBe("RED");
+  });
+
+  it("submits an early human HQ capture without a post-terminal Skip", async () => {
+    const submitted: Turn[] = [];
+    const multiplayer: Multiplayer = {
+      initGame: async () => undefined,
+      onTurnPlayed: () => undefined,
+      sendTurn: async (turn) => {
+        submitted.push({ ...turn, moves: [...turn.moves] });
+      },
+    };
+    const game = new GameClient({
+      engine: fakeEngine(),
+      bot: true,
+      playerId: "0",
+      multiplayer,
+    });
+    const capture = allowedMoveFromUci("a1a2xb8");
+    game.push(capture);
+    expect(game.needsTurnConfirmation).toBe(false);
+    await game.endTurn();
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0].moves).toEqual([capture]);
+    expect(game.moves).toEqual([capture]);
+    expect(pgnToTurns(game.pgn())[0]).toMatchObject({
+      moves: [capture],
+      status: "hq-capture",
+      winner: "RED",
+    });
+  });
+});
