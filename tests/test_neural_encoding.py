@@ -22,6 +22,27 @@ def mirrored_move(move):
                    orientation=None if move.orientation is None else (move.orientation + 4) % 8)
 
 
+def reference_board_encoding(board):
+    """Encoding-v1 specification using authoritative mirror and scalar bits."""
+    canonical = board.mirror() if board.turn == e.BLUE else board
+    masks = [getattr(canonical, field) & canonical.occupied_co[color]
+             for color in (e.RED, e.BLUE)
+             for field in ("hq", "infantry", "armored_infantry", "airborne_infantry",
+                           "artillery", "armored_artillery", "heavy_artillery")]
+    masks.extend((*canonical.bombarded_co, *canonical.adjacent_infantry_squares_co,
+                  canonical.orientation_bit0, canonical.orientation_bit1, canonical.orientation_bit2,
+                  canonical.turn_pieces, canonical.free_capture_clusters,
+                  canonical.free_capture_enemies, canonical.free_capture_num_allowed))
+    planes = [[[float(bool(mask & (1 << (row * 8 + column)))) for column in range(8)]
+               for row in range(8)] for mask in masks]
+    scalars = [canonical.reserves[color].get_count(kind) / 8
+               for color in (e.RED, e.BLUE) for kind in e.PIECE_TYPES if kind != e.HQ]
+    scalars.extend((canonical.turn_moves / 3, canonical.turn_auto_moves / 64,
+                    float(canonical.did_offer_draw), float(canonical.did_accept_draw)))
+    planes.extend([[value] * 8 for _ in range(8)] for value in scalars)
+    return np.asarray(planes, dtype=np.float32)
+
+
 class NeuralEncodingTests(unittest.TestCase):
     def test_shapes_dtype_and_empty_action_list(self):
         board = e.BaseBoard()
@@ -118,6 +139,57 @@ class NeuralEncodingTests(unittest.TestCase):
         self.assertEqual(encoded[0].tolist(), [64, 64, 64, 8, ACTION_KINDS["Skip"], 0])
         self.assertEqual(encoded[3, 4], ACTION_KINDS["bombard"])
         self.assertEqual(encoded[4, 4], ACTION_KINDS["free"])
+
+    def test_vectorized_features_match_encoding_v1_across_legal_play(self):
+        board, rng = e.BaseBoard(), random.Random(9152)
+        for step in range(100):
+            moves = list(board.generate_legal_moves())
+            for candidate in (board, board.mirror()):
+                before = candidate.serialize()
+                np.testing.assert_array_equal(encode_board(candidate), reference_board_encoding(candidate))
+                self.assertTrue(encode_board(candidate).flags.c_contiguous)
+                self.assertEqual(candidate.serialize(), before)
+            board.push(rng.choice(moves))
+            if board.outcome() is not None:
+                board = e.BaseBoard()
+
+    def test_blue_bookkeeping_and_orientation_mask_match_previous_format_exactly(self):
+        board = e.BaseBoard()
+        board.clear_board()
+        for square in range(8):
+            board.set_piece_at(square + 8, e.Piece(e.ARTILLERY, e.RED, square))
+            board.set_piece_at(square + 48, e.Piece(e.HEAVY_ARTILLERY, e.BLUE, square))
+        # Serialized rule state can retain non-artillery orientation bits.
+        # Existing v1 Red preserves those bits; authoritative Blue mirror
+        # masks them. Preserve that behavior so existing weights stay valid.
+        board.orientation_bit0 |= e.BB_SQUARES[e.A4]
+        board.orientation_bit1 |= e.BB_SQUARES[e.B4]
+        board.orientation_bit2 |= e.BB_SQUARES[e.C4]
+        board.turn_pieces = e.BB_SQUARES[e.B2] | e.BB_SQUARES[e.H7]
+        board.free_capture_clusters = e.BB_SQUARES[e.A1] | e.BB_SQUARES[e.H8]
+        board.free_capture_enemies = e.BB_SQUARES[e.G7]
+        board.free_capture_num_allowed = e.BB_SQUARES[e.F6]
+        board.turn_moves, board.turn_auto_moves = 2, 7
+        board.did_offer_draw = board.did_accept_draw = True
+        board.reserves[e.BLUE].add(e.INFANTRY, 21)
+        for color in (e.RED, e.BLUE):
+            board.turn = color
+            before, stack = board.serialize(), list(board.move_stack)
+            np.testing.assert_array_equal(encode_board(board), reference_board_encoding(board))
+            self.assertEqual(board.serialize(), before)
+            self.assertEqual(board.move_stack, stack)
+
+    def test_action_encoding_rejects_out_of_range_original_fields(self):
+        board = e.BaseBoard()
+        for move in (e.Move(name="Move", from_square=-1, to_square=0),
+                     e.Move(name="Move", from_square=64, to_square=0),
+                     e.Move(name="Move", from_square=0, to_square=64),
+                     e.Move(name="Move", from_square=0, to_square=1, capture_preference=64),
+                     e.Move(name="MoveAndOrient", from_square=0, to_square=1, orientation=8),
+                     e.Move(name="Reinforce", to_square=0, unit_type=8),
+                     e.Move(name="unknown")):
+            with self.subTest(move=move.name), self.assertRaises(ValueError):
+                encode_actions(board, [move])
 
 
 if __name__ == "__main__":

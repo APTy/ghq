@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "purpose": "Count-matched value-label-selection screen; prepare first, collect and train only in separate explicit stages.",
+  "seed": 20261125,
+  "inputs": {
+    "checkpoint": ".data/neural/curriculum-resume-20261121/resume-input/checkpoint.pt",
+    "training_roots": ".data/neural/learning-loop-repair-20261121/plan/training-panel.jsonl",
+    "validation_roots": ".data/neural/learning-loop-repair-20261121/plan/development-panel.jsonl",
+    "partition": ".data/neural/curriculum-optimized-20261121/resume-input/curriculum-0011.json",
+    "arena_initial": ".data/neural/learning-loop-repair-20261121/plan/openings-initial.json",
+    "arena_reserve": ".data/neural/learning-loop-repair-20261121/plan/openings-extension.json"
+  },
+  "checkpoint_sha256": "fd6a4fcd68305438a65ce709c064b22a546dac93700b1f53084e0b07868e48bb",
+  "excluded_opening_inputs": ["arena_initial", "arena_reserve"],
+  "collection": {
+    "training_games": 128,
+    "validation_games": 32,
+    "simulations": 128,
+    "max_turns": 100,
+    "workers": 8,
+    "inference_batch_size": 8,
+    "threads": 2,
+    "game_timeout_seconds": 900,
+    "max_seconds": 7200,
+    "players": "Exact checkpoint4 on both sides, fixed throughout collection; root noise on, temperature1 for first12 continuation turns and0 afterwards.",
+    "roots": "One turn-boundary root per inherited family, selected before outcomes from existing train/development panels. No arena roots or trajectories. Preserve old split and exclude canonical/mirrored crossovers.",
+    "cutoffs": "Keep raw unfinished games without WDL labels. Every scheduled game must have a report before assembly. Missing/watchdog games invalidate this cohort until explicitly resolved, never treated as draws or silently retried.",
+    "bounds": "No automatic cohort extension or additional cloud allocation. A timeout retains reports and permits only known unstarted tasks to continue after review. No collection or inference concurrently with the existing equal-time arena on this host."
+  },
+  "panels": {
+    "train_legacy": 1920,
+    "train_fresh": 2176,
+    "validation_legacy": 1024,
+    "validation_fresh": 1024,
+    "sampling": "Deterministic family round-robin; canonical deduplication. Fresh rows need verified terminal same-model provenance; max64 rows/family. Legacy max128 rows/family. Do not rebalance by win/draw/loss. Old outcomes remain unchanged."
+  },
+  "training": {
+    "seeds": [20261125, 20261126, 20261127],
+    "representative_seed": 20261125,
+    "steps": 32,
+    "batch_size": 128,
+    "epochs": 1,
+    "learning_rate": 0.001,
+    "max_seconds": 900,
+    "min_training_games_and_families": 16,
+    "min_validation_games_and_families": 8,
+    "min_training_value_labels": 512,
+    "min_validation_value_labels": 256,
+    "min_control_nonself_fraction": 0.2,
+    "arms": {
+      "mixed": "Control: randomly choose terminal-labeled rows within each exact batch, matching selfplay arm's value-label count; independent frozen control-mask RNG.",
+      "selfplay": "Value loss uses explicit same-checkpoint selfplay outcomes only; all rows still contribute identical policy targets."
+    },
+    "controls": "Restore exact checkpoint4 model AND Adam independently for every seed/arm; same policy row order, batch boundaries, learning rate, update count, and actual value-labeled exposure count in each batch. Freeze inputs/order/masks before inference. Incomplete arms invalidate comparison; retain every arm and no best-seed selection."
+  },
+  "decision": {
+    "status": "Exploratory development screen, not automatic selection or promotion",
+    "primary": "Fresh same-baseline selfplay holdout WDL logloss; report Brier and calibration diagnostics when available. Report paired selfplay-minus-mixed deltas for all3 seeds.",
+    "advance_to_tactics_if": [
+      "All integrity/data readiness/exposure checks pass and all six arms complete.",
+      "Mean paired primary WDL logloss delta <= -0.01, at least2/3 seeds improve, and fixed representative seed20261125 has nonpositive paired delta.",
+      "Mean nonforced policy NLL on the unchanged legacy panel worsens by <=0.02 versus baseline for both teacher and pooled neural sources; fixed representative also respects this tolerance."
+    ],
+    "diagnostics": "Teacher/mixed WDL remains reported but is not a veto for a deliberately changed value objective. Show terminal/unfinished rates, W/D/L and game/family counts, per-batch value exposures, source mix, and A/B label overlap.",
+    "next": "If development checks pass, run baseline and both fixed-seed arms on development tactics; require legal complete plans, immediate-HQ anchors, and no loss of baseline development pass count. Then freeze new paired openings and bounded equal-time matches versus each other, baseline and CPU. Never use those arena trajectories as training data. A larger independent evaluation is required before deployment.",
+    "if_inconclusive": "Do not choose a favorable seed, relax thresholds, extend training, or claim mixed outcomes are wrong. Review data/uncertainty and plan a separate experiment.",
+    "limitations": "This tests a practical label-selection change, which also changes the distribution of positions receiving value supervision. It does not isolate opponent provenance causally. A stronger later control can compare original and fresh selfplay outcomes at identical roots. Development families are reused; three shuffle seeds are not independent game-level evidence."
+  },
+  "promoted": false,
+  "automatic_training": false,
+  "automatic_gpu_allocation": false
+}

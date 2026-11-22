@@ -1,13 +1,16 @@
-"""Held-out tactical gates for a checkpoint, with both colors of each position.
+"""Tactical regression checks and optional frozen cases, each in both colors.
 
-These reported mistakes are evaluation fixtures, never training examples. A
-failed gate is recorded in the report; this command does not assert that an
-untrained or prototype checkpoint has reached production playing strength.
+Legacy regression fixtures are not explicitly injected into training, but are
+not listed in the reserved benchmark manifest and may arise naturally during
+teacher or self-play games. Their training overlap is not assessed here. The
+separate 250-case frozen suite has explicit exclusions for fresh runs that use
+its manifest. A failed check is recorded; passing does not establish strength.
 """
 import argparse
 from dataclasses import dataclass, replace
 import hashlib
 import json
+import math
 from pathlib import Path
 
 import torch
@@ -16,6 +19,7 @@ from .mcts import MCTS
 from .model import TorchEvaluator, load_checkpoint, rules_source_hash
 from .pipeline import write_json
 from .rules import e, cpu, copy_board
+from .suite import read_suite, judge_case, summarize, canonical_state_id
 from .train import device_name
 
 
@@ -181,6 +185,48 @@ def run_case(case, evaluator, *, time_ms=2400, simulations=100000, seed=0):
             "nodes": sum(item.nodes for item in plan.searches)}
 
 
+def run_frozen_case(case, evaluator, *, mirrored=False, time_ms=2400, simulations=100000, seed=0):
+    board = e.BaseBoard.deserialize(case["state"])
+    if mirrored:
+        board = board.mirror()
+    if evaluator is None:
+        analysis = json.loads(cpu.analyze_json(board.serialize(), time_ms=time_ms, max_depth=3,
+                                              beam_width=8, multi_pv=1))
+        moves, elapsed, timed_out = analysis["turnMoves"], analysis["elapsedMs"], analysis["timedOut"]
+        nodes, simulations_done, value = analysis["nodes"], None, None
+    else:
+        plan = MCTS(evaluator, simulations=simulations, seed=seed).plan_turn(board, time_ms=time_ms)
+        moves, elapsed, timed_out, value = plan.moves, plan.elapsed_ms, plan.timed_out, plan.value
+        nodes, simulations_done = sum(item.nodes for item in plan.searches), sum(item.simulations for item in plan.searches)
+    judgement = judge_case(case, moves, mirrored=mirrored)
+    return {"name": f"{case['id']}-{'blue' if board.turn == e.BLUE else 'red'}",
+            "case_id": case["id"], "canonical_state_id": case["canonical_state_id"],
+            "family_id": case["family_id"], "category": case["category"], "split": case["split"],
+            "evidence": case["evidence"], "objective": case["objective"],
+            "player": "RED" if board.turn == e.RED else "BLUE", "state": board.serialize(),
+            "moves": moves, **judgement, "elapsed_ms": elapsed, "timed_out": timed_out,
+            "value_current_player": value, "nodes": nodes, "simulations": simulations_done}
+
+
+def frozen_results_summary(results):
+    groups = {}
+    for result in results:
+        if "case_id" in result:
+            groups.setdefault(result["case_id"], []).append(result)
+    paired = [group for group in groups.values() if len(group) == 2 and {row["player"] for row in group} == {"RED", "BLUE"}]
+    categories = {}
+    for group in paired:
+        totals = categories.setdefault(group[0]["category"], {"unique_cases": 0, "passed_both_colors": 0,
+                                                             "color_runs": 0, "passed_color_runs": 0})
+        totals["unique_cases"] += 1
+        totals["passed_both_colors"] += int(all(row["passed"] for row in group))
+        totals["color_runs"] += 2
+        totals["passed_color_runs"] += sum(row["passed"] for row in group)
+    return {"completed_unique_cases": len(paired), "passed_both_colors": sum(all(row["passed"] for row in group) for group in paired),
+            "families": len({group[0]["family_id"] for group in paired}), "categories": categories,
+            "note": "Two color runs share one case; same-game/template cases share a family. No strategic-optimality claim."}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("checkpoint", type=Path)
@@ -190,8 +236,11 @@ def main():
     parser.add_argument("--simulations", type=int, default=100000)
     parser.add_argument("--threads", type=int, default=2)
     parser.add_argument("--seed", type=int, default=4173)
+    parser.add_argument("--suite", type=Path, help="Frozen JSONL positive objectives, in addition to the ten regression color runs")
+    parser.add_argument("--split", choices=("all", "train", "dev", "test"), default="test")
+    parser.add_argument("--skip-regressions", action="store_true", help="Run only the frozen suite")
     args = parser.parse_args()
-    if args.time_ms <= 0 or min(args.simulations, args.threads) < 1:
+    if not math.isfinite(args.time_ms) or args.time_ms <= 0 or min(args.simulations, args.threads) < 1:
         parser.error("Time, simulations, and threads must be positive")
     if args.output.exists():
         parser.error("Tactical report exists; select a new output path")
@@ -202,22 +251,46 @@ def main():
     warm = e.BaseBoard()
     evaluator.predict(warm, list(warm.generate_legal_moves()))
     cases = tactical_cases()
+    if args.skip_regressions:
+        cases = []
+    frozen_header, frozen = read_suite(args.suite, args.split) if args.suite else (None, [])
+    unscored = sum(case["evidence"] != "verified_witness" for case in frozen)
+    frozen = [case for case in frozen if case["evidence"] == "verified_witness"]
+    if not cases and not frozen:
+        parser.error("No scored cases selected")
     report = {"checkpoint": str(args.checkpoint),
               "checkpoint_sha256": hashlib.sha256(args.checkpoint.read_bytes()).hexdigest(),
               "rules_sha256": rules_source_hash(), "usage": "evaluation_only",
               "device": device, "time_ms_per_turn": args.time_ms,
               "simulations_cap_per_action": args.simulations, "seed": args.seed,
-              "expected_cases": len(cases), "complete": False,
+              "expected_cases": len(cases) + 2 * len(frozen), "complete": False,
+              "regression_unique_cases": len(cases) // 2,
+              "regression_holdout": {"status": "not_explicitly_reserved", "overlap_assessed": False,
+                                     "note": "Legacy anchors are not listed in the reserved benchmark manifest. They are not explicitly injected into training, but may occur naturally in teacher/self-play games."},
+              "frozen_suite": str(args.suite) if args.suite else None,
+              "frozen_suite_sha256": hashlib.sha256(args.suite.read_bytes()).hexdigest() if args.suite else None,
+              "frozen_suite_header": frozen_header, "frozen_selection": summarize(frozen),
+              "unscored_candidates": unscored,
               "passed": 0, "failed": 0, "cases": [], "promoted": False}
-    for case in cases:
-        result = run_case(case, evaluator, time_ms=args.time_ms,
-                          simulations=args.simulations, seed=args.seed)
+    def outputs():
+        for case in cases:
+            result = run_case(case, evaluator, time_ms=args.time_ms, simulations=args.simulations, seed=args.seed)
+            result["category"] = "reported_regression"
+            result["canonical_state_id"] = canonical_state_id(case.board)
+            yield result
+        for case in frozen:
+            for mirrored in (False, True):
+                yield run_frozen_case(case, evaluator, mirrored=mirrored, time_ms=args.time_ms,
+                                      simulations=args.simulations, seed=args.seed)
+
+    for result in outputs():
         report["cases"].append(result)
         report["passed"] += int(result["passed"])
         report["failed"] += int(not result["passed"])
-        report["complete"] = len(report["cases"]) == len(cases)
+        report["complete"] = len(report["cases"]) == report["expected_cases"]
+        report["frozen_results"] = frozen_results_summary(report["cases"])
         write_json(args.output, report)
-        print(json.dumps({"name": case.name, "passed": result["passed"], "moves": result["moves"],
+        print(json.dumps({"name": result["name"], "passed": result["passed"], "moves": result["moves"],
                           "checks": result["checks"], "elapsed_ms": result["elapsed_ms"]}), flush=True)
 
 

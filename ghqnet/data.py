@@ -7,8 +7,10 @@ import numpy as np
 
 from .model import rules_source_hash
 from .rules import e, copy_board
+from .value_targets import validate_value_provenance
 
-DATA_VERSION = 1
+DATA_VERSION = 3
+SUPPORTED_DATA_VERSIONS = (1, 2, DATA_VERSION)
 
 
 @dataclass
@@ -19,6 +21,12 @@ class Sample:
     outcome: int | None = None  # W=0, D=1, L=2, for THIS state's player
     game_id: str = ""
     source: str = "mcts"
+    # Related continuations and mirrored variants share a family for holdouts.
+    family_id: str = ""
+    priority: str = "normal"
+    model_id: str = ""
+    # Missing metadata is explicitly unknown, including all legacy v1/v2 rows.
+    value_provenance: dict | None = None
 
     def validate(self):
         board = e.BaseBoard.deserialize(self.state)
@@ -32,6 +40,9 @@ class Sample:
             raise ValueError("Replay policy must sum to one")
         if self.outcome not in (None, 0, 1, 2):
             raise ValueError("Outcome must be W/D/L or absent for unfinished games")
+        if self.priority not in ("normal", "hard"):
+            raise ValueError("Replay priority must be normal or hard")
+        validate_value_provenance(self.value_provenance, outcome=self.outcome, state=self.state)
         return board
 
 
@@ -62,7 +73,7 @@ def write_replay(path, samples, **metadata):
 def read_replay(path):
     with Path(path).open() as source:
         header = json.loads(next(source))
-        if header.get("version") != DATA_VERSION or header.get("rules_sha256") != rules_source_hash():
+        if header.get("version") not in SUPPORTED_DATA_VERSIONS or header.get("rules_sha256") != rules_source_hash():
             raise ValueError("Replay schema or rules do not match this engine")
         samples = [Sample(**json.loads(line)) for line in source if line.strip()]
     for sample in samples:

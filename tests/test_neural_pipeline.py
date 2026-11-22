@@ -97,6 +97,19 @@ class NeuralPipelineTests(unittest.TestCase):
         self.assertEqual(configuration["effective_learning_rates"], [1e-3])
         self.assertEqual(read_replay(destination / resumed["metadata"]["replay_buffer"]), expected)
 
+    def test_replay_ratio_is_curriculum_only_and_defaults_to_one(self):
+        arguments = self.arguments(self.root/'prototype')
+        self.assertIsNone(pipeline.validate_args(arguments).replay_ratio)
+        arguments.replay_ratio = 1
+        with self.assertRaisesRegex(ValueError, 'requires --curriculum'):
+            pipeline.validate_args(arguments)
+        arguments = pipeline.parser().parse_args(['--output', str(self.root/'curriculum'), '--curriculum'])
+        self.assertEqual(pipeline.validate_args(arguments).replay_ratio, 1)
+        for value in (-1, float('nan'), float('inf')):
+            arguments.replay_ratio = value
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                pipeline.validate_args(arguments)
+
     def test_buffer_hash_mismatch_is_rejected_before_creating_output(self):
         checkpoint = self.first_checkpoint()
         _, saved = load_checkpoint(checkpoint)

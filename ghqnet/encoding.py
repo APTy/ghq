@@ -30,10 +30,7 @@ CHANNEL_NAMES = tuple(
 )
 BOARD_CHANNELS = len(CHANNEL_NAMES)
 _SQUARE_INDICES = np.arange(64, dtype=np.uint64)
-
-
-def _plane(mask: int) -> np.ndarray:
-    return ((np.uint64(mask) >> _SQUARE_INDICES) & np.uint64(1)).astype(np.float32).reshape(8, 8)
+_MASK_CHANNELS = 25
 
 
 def encode_board(board) -> np.ndarray:
@@ -43,24 +40,33 @@ def encode_board(board) -> np.ndarray:
     captures. Occupancy/color masks are encoded jointly by the 14 piece planes;
     absolute player identity is intentionally removed by canonicalization.
     """
-    canonical = board.mirror() if board.turn == e.BLUE else board
-    piece_masks = (canonical.hq, canonical.infantry, canonical.armored_infantry,
-                   canonical.airborne_infantry, canonical.artillery,
-                   canonical.armored_artillery, canonical.heavy_artillery)
-    masks = [mask & canonical.occupied_co[color]
-             for color in (e.RED, e.BLUE) for mask in piece_masks]
-    masks.extend((*canonical.bombarded_co, *canonical.adjacent_infantry_squares_co,
-                  canonical.orientation_bit0, canonical.orientation_bit1,
-                  canonical.orientation_bit2, canonical.turn_pieces,
-                  canonical.free_capture_clusters, canonical.free_capture_enemies,
-                  canonical.free_capture_num_allowed))
-    planes = [_plane(mask) for mask in masks]
-    scalars = [canonical.reserves[color].get_count(kind) / 8.0
-               for color in (e.RED, e.BLUE) for kind in RESERVE_TYPES]
-    scalars.extend((canonical.turn_moves / 3.0, canonical.turn_auto_moves / 64.0,
-                    float(canonical.did_offer_draw), float(canonical.did_accept_draw)))
-    planes.extend(np.full((8, 8), value, dtype=np.float32) for value in scalars)
-    return np.stack(planes)
+    blue = board.turn == e.BLUE
+    colors = (board.turn, not board.turn)
+    piece_masks = (board.hq, board.infantry, board.armored_infantry,
+                   board.airborne_infantry, board.artillery,
+                   board.armored_artillery, board.heavy_artillery)
+    masks = [mask & board.occupied_co[color] for color in colors for mask in piece_masks]
+    orientations = (board.orientation_bit0, board.orientation_bit1, board.orientation_bit2)
+    if blue:
+        # Match BaseBoard.mirror exactly: only artillery retains orientation,
+        # and adding four modulo eight flips bit2. Reverse square order below
+        # instead of copying and transforming a complete rules board.
+        oriented = board.occupied & (board.artillery | board.armored_artillery | board.heavy_artillery)
+        orientations = (orientations[0] & oriented, orientations[1] & oriented,
+                        (orientations[2] ^ e.BB_ALL) & oriented)
+    masks.extend((*(board.bombarded_co[color] for color in colors),
+                  *(board.adjacent_infantry_squares_co[color] for color in colors),
+                  *orientations, board.turn_pieces, board.free_capture_clusters,
+                  board.free_capture_enemies, board.free_capture_num_allowed))
+    result = np.empty((BOARD_CHANNELS, 64), dtype=np.float32)
+    shifts = _SQUARE_INDICES[::-1] if blue else _SQUARE_INDICES
+    result[:_MASK_CHANNELS] = (np.asarray(masks, dtype=np.uint64)[:, None] >> shifts) & np.uint64(1)
+    scalars = [board.reserves[color].get_count(kind) / 8.0
+               for color in colors for kind in RESERVE_TYPES]
+    scalars.extend((board.turn_moves / 3.0, board.turn_auto_moves / 64.0,
+                    float(board.did_offer_draw), float(board.did_accept_draw)))
+    result[_MASK_CHANNELS:] = np.asarray(scalars, dtype=np.float32)[:, None]
+    return result.reshape(BOARD_CHANNELS, 8, 8)
 
 
 def encode_actions(board, moves: Sequence) -> np.ndarray:
@@ -73,23 +79,31 @@ def encode_actions(board, moves: Sequence) -> np.ndarray:
     for legal moves. No factorized policy probabilities or global action IDs
     are used. Blue's coordinates/directions are transformed only in this array.
     """
-    result = np.empty((len(moves), len(ACTION_COLUMNS)), dtype=np.int64)
-    blue = board.turn == e.BLUE
-    for index, move in enumerate(moves):
+    rows = []
+    for move in moves:
         kind = move.auto_capture_type if move.name == "AutoCapture" else move.name
         if kind not in ACTION_KINDS:
             raise ValueError(f"Unsupported action kind: {kind!r}")
-        squares = []
-        for square in (move.from_square, move.to_square, move.capture_preference):
-            if square is not None and not 0 <= square < 64:
-                raise ValueError(f"Invalid action square: {square}")
-            squares.append(NO_SQUARE if square is None else 63 - square if blue else square)
+        source, destination, victim = move.from_square, move.to_square, move.capture_preference
+        if ((source is not None and not 0 <= source < 64) or
+                (destination is not None and not 0 <= destination < 64) or
+                (victim is not None and not 0 <= victim < 64)):
+            raise ValueError("Invalid action square")
         orientation = move.orientation
         if orientation is not None and not 0 <= orientation < 8:
             raise ValueError(f"Invalid action orientation: {orientation}")
-        orientation = NO_ORIENTATION if orientation is None else (orientation + (4 if blue else 0)) % 8
         deployment = NO_DEPLOYMENT if move.unit_type is None else move.unit_type
         if not 0 <= deployment <= 7:
             raise ValueError(f"Invalid deployment type: {deployment}")
-        result[index] = (*squares, orientation, ACTION_KINDS[kind], deployment)
+        rows.append((NO_SQUARE if source is None else source,
+                     NO_SQUARE if destination is None else destination,
+                     NO_SQUARE if victim is None else victim,
+                     NO_ORIENTATION if orientation is None else orientation,
+                     ACTION_KINDS[kind], deployment))
+    result = np.asarray(rows, dtype=np.int64).reshape(-1, len(ACTION_COLUMNS))
+    if board.turn == e.BLUE and len(result):
+        squares = result[:, :3]
+        np.subtract(63, squares, out=squares, where=squares != NO_SQUARE)
+        orientations = result[:, 3]
+        np.bitwise_xor(orientations, 4, out=orientations, where=orientations != NO_ORIENTATION)
     return result

@@ -1,6 +1,7 @@
 import tempfile
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 try:
     import numpy as np
@@ -8,7 +9,7 @@ try:
 except ImportError:
     raise unittest.SkipTest("Neural model tests require numpy and torch")
 
-from ghqnet.encoding import encode_actions, encode_board
+from ghqnet.encoding import BOARD_CHANNELS, encode_actions, encode_board
 from ghqnet.model import (NetworkConfig, PolicyValueNet, TorchEvaluator,
                           load_checkpoint, save_checkpoint)
 from ghqnet.rules import e
@@ -98,6 +99,73 @@ class NeuralModelTests(unittest.TestCase):
         self.assertEqual(evaluator.predict(board, []), ([], -1.0))
         board.turn = e.BLUE
         self.assertEqual(evaluator.predict(board, []), ([], 1.0))
+
+    def test_encoded_batch_matches_legacy_with_mixed_counts_and_terminal_rows(self):
+        evaluator = TorchEvaluator(self.model)
+        advanced = self.board.copy()
+        advanced.push(e.Move.from_uci("rrd1"))
+        boards = [self.board, advanced, advanced.mirror()]
+        moves = [list(board.generate_legal_moves()) for board in boards]
+        self.assertGreater(len(set(map(len, moves))), 1)
+        features = [encode_board(board) for board in boards]
+        descriptors = [encode_actions(board, actions) for board, actions in zip(boards, moves)]
+        snapshots = [array.copy() for array in features + descriptors]
+        expected = evaluator.predict_batch(boards, moves)
+        with patch("ghqnet.model.encode_board", side_effect=AssertionError("Re-encoded board")), \
+                patch("ghqnet.model.encode_actions", side_effect=AssertionError("Re-encoded actions")), \
+                patch("ghqnet.model.terminal_value", side_effect=AssertionError("Re-ran rules")):
+            actual = evaluator.predict_encoded_batch(features, descriptors)
+        self.assertEqual(actual, expected)
+        for array, before in zip(features + descriptors, snapshots):
+            np.testing.assert_array_equal(array, before)
+        terminal = self.board.copy()
+        terminal.set_piece_at(e.H1, None)
+        with_terminal = evaluator.predict_batch([boards[0], terminal, *boards[1:]], [moves[0], [], *moves[1:]])
+        self.assertEqual(with_terminal, [expected[0], ([], -1.0), *expected[1:]])
+        # A singleton legal-action row gets exactly probability one, even
+        # when a wider row determines the batch's padding width.
+        singleton = evaluator.predict_encoded_batch(features[:2], [descriptors[0], descriptors[1][:1]])
+        self.assertEqual(singleton[1][0], [1.0])
+        self.assertEqual(evaluator.predict_encoded_batch([], []), [])
+
+    def test_encoded_batch_input_validation_precedes_model_execution(self):
+        evaluator = TorchEvaluator(self.model)
+        board, actions = encode_board(self.board), encode_actions(self.board, self.moves)
+        nonfinite = board.copy()
+        nonfinite[0, 0, 0] = np.nan
+        invalid_actions = []
+        for column, maximum in enumerate((64, 64, 64, 8, 5, 7)):
+            for value in (-1, maximum + 1):
+                row = actions[:1].copy()
+                row[0, column] = value
+                invalid_actions.append(row)
+        cases = [([board], []), ([board.astype(np.float64)], [actions]),
+                 ([board[:, :, :7]], [actions]), ([nonfinite], [actions]),
+                 ([board], [actions.astype(np.float32)]), ([board], [actions[:, :5]]),
+                 ([board], [np.empty((0, 6), np.int64)]),
+                 *[([board], [bad]) for bad in invalid_actions]]
+        with patch.object(self.model, "forward", side_effect=AssertionError("Malformed data reached model")):
+            for boards, descriptors in cases:
+                with self.subTest(shapes=[getattr(x, "shape", None) for x in boards + descriptors]), \
+                        self.assertRaises(ValueError):
+                    evaluator.predict_encoded_batch(boards, descriptors)
+
+    def test_inference_profile_accumulates_phases_without_changing_outputs(self):
+        evaluator, profile = TorchEvaluator(self.model), {}
+        expected = evaluator.predict(self.board, self.moves)
+        with patch("torch.cuda.synchronize", side_effect=AssertionError("CPU inference synchronized CUDA")):
+            legacy = evaluator.predict_batch([self.board], [self.moves], profile=profile)[0]
+            encoded = evaluator.predict_encoded_batch([encode_board(self.board)],
+                                                      [encode_actions(self.board, self.moves)], profile=profile)[0]
+        self.assertEqual(expected, legacy)
+        self.assertEqual(expected, encoded)
+        self.assertEqual(profile["calls"], 2)
+        self.assertEqual(profile["rows"], 2)
+        self.assertEqual(profile["timing_scope"], "wall_seconds")
+        self.assertEqual(profile["device"], "cpu")
+        for phase in ("encode_seconds", "packing_seconds", "h2d_seconds", "forward_seconds",
+                      "d2h_postprocess_seconds"):
+            self.assertGreaterEqual(profile[phase], 0)
 
     def test_checkpoint_roundtrip_optimizer_metadata_and_version_guard(self):
         optimizer = torch.optim.AdamW(self.model.parameters(), lr=0.001)

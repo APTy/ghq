@@ -1,0 +1,133 @@
+{
+  "version": 1,
+  "created_at": "2026-11-22T13:15:44.769913+00:00",
+  "purpose": "Bounded smaller-update calibration on saved self-play, followed by actual matches. No promotion.",
+  "baseline": {
+    "path": "/Users/tyler/dev/ghq/.data/neural/curriculum-resume-20261121/resume-input/checkpoint.pt",
+    "sha256": "fd6a4fcd68305438a65ce709c064b22a546dac93700b1f53084e0b07868e48bb",
+    "model_sha256": "1583c988b5d210c0e1ae139c3c7437c35ff6e21e5579ffec29ad0c17c5d0fe2b",
+    "optimizer_sha256": "8cb8473ecadd572f45a9c88168cc5d31c124b82473c6fa962d21b9a5f0070650"
+  },
+  "inputs": {
+    "training": {
+      "path": "/Users/tyler/dev/ghq/.data/neural/value-targets-20261121/dataset/training.jsonl",
+      "sha256": "ecb27b87222b4dfcab27979d950a7db58d3aa5a409b7f31564b02a7656858279"
+    },
+    "validation": {
+      "path": "/Users/tyler/dev/ghq/.data/neural/value-targets-20261121/dataset/validation.jsonl",
+      "sha256": "daf56d334555bcd49c0e7aaf1256a2986372b56615cadd499496b49781245f37"
+    },
+    "partition": {
+      "path": "/Users/tyler/dev/ghq/.data/neural/value-targets-20261121/dataset/partition.json",
+      "sha256": "3d6c22c7ab608effd123370d8c7c0e101dd7c3b7fbf77539d3605d0178a623f1"
+    }
+  },
+  "training": {
+    "seeds": [
+      20261125,
+      20261126,
+      20261127
+    ],
+    "representative_seed": 20261125,
+    "learning_rates": [
+      0.0003,
+      0.0001
+    ],
+    "steps": 32,
+    "batch_size": 128,
+    "epochs": 1,
+    "expected_policy_rows": 4096,
+    "expected_value_rows": 2176,
+    "max_seconds": 900,
+    "value_labels": "Verified same-checkpoint self-play only; identical full policy data and value mask at both rates.",
+    "controls": "Fresh exact checkpoint4 model and Adam state per seed/rate. Seeds vary row order only."
+  },
+  "decision": {
+    "policy_tolerance": 0.02,
+    "near_tie": 0.005,
+    "qualification": "Mean self-play WDL NLL no worse than baseline, at least 2/3 seeds strictly better, representative no worse; teacher/neural policy NLL mean and representative delta <=0.02.",
+    "selection": "Use qualifying rates if any; otherwise both rates and label exploratory. Find minimum mean primary NLL, then choose the smallest rate within 0.005 of that minimum. Always use seed20261125.",
+    "advance": "Exactly one selected representative advances to tactics. With legal complete finite plans and both immediate-HQ anchors, run the fixed arena even if proxy qualification failed. Other tactics are advisory. No fallback candidate after hard tactical failure."
+  },
+  "tactics": {
+    "suite": "/Users/tyler/dev/ghq/training/benchmarks/cases.jsonl",
+    "suite_sha256": "8c7e3462857020a2ba9785e7e19b25e8487e189eaeb5f24d5da0dc1a804e2025",
+    "split": "dev",
+    "verified_cases": 17,
+    "legacy_cases": 10,
+    "time_ms": 2400,
+    "simulations": 256,
+    "seed": 4173,
+    "max_seconds": 900
+  },
+  "arena": {
+    "manifest": "/Users/tyler/dev/ghq/.data/neural/update-size-20261122/openings.json",
+    "manifest_sha256": "5f563d071f5b081f3076de39cae5251e8df77a5a39aab7c8cc2fc8073d3b6c1e",
+    "opening_count": 8,
+    "time_ms": 2400,
+    "max_turns": 100,
+    "simulations": 100000,
+    "game_watchdog_seconds": 330,
+    "max_seconds": 15000,
+    "summary_seed": 202612100,
+    "arms": [
+      "candidate-vs-baseline",
+      "candidate-vs-cpu",
+      "baseline-vs-cpu"
+    ],
+    "expected_games": 48,
+    "concurrency": 1,
+    "extension": false,
+    "interpretation": "Exploratory strength screen; report paired W/L/D/unfinished and uncertainty. No Elo or promotion claim. Arena trajectories must stay out of training."
+  },
+  "threads": 2,
+  "device": "cpu",
+  "source_sha256": {
+    "public/engine.py": "c51d2cc122937b02d9ab9711740f6257df142c8eb4f1dd356a70eb0713fececf",
+    "public/search.py": "fae295d671af07a38407467d41df6746a22811b44ecf4f2573e13aca5fa10818",
+    "ghqnet/__init__.py": "291d9a6506d20ec204cf4136bfd01286b386b4844de9f89be4a0eb5d53ca4b94",
+    "ghqnet/ablate_replay.py": "3efd24c9705c94ef3f7923796aec117601f5112b36060bfeb5d34185c5aa4ff9",
+    "ghqnet/ablate_update_size.py": "706c258156a1b1c3f4549b0fb88c01f442a6227c13ed8d8995ba3087078321c9",
+    "ghqnet/ablate_value_targets.py": "e6dbc72efc18802f01338db95b3312343b3161ada21df352f2e8948175b7d08f",
+    "ghqnet/analyze.py": "2d1084242ee65f15f59234f8ba4a0c0396b5be287c436b3af6cc1185cf3551ae",
+    "ghqnet/arena.py": "51160566f164f66d688144c263c76a0f0b9cc1f4de229d976ffa16e90388fa25",
+    "ghqnet/benchmark.py": "5a1417999536e271e9c6341a8ecaa0e6e5b7a3050aee408605048aa37268744c",
+    "ghqnet/benchmark_collector.py": "ec504ad25a59fb0a57e707e63a8761c350cccdaeec910f41ddba92491a0ecd48",
+    "ghqnet/collector.py": "97da56afdd6fc9d102edc42c7183e3ada81d8bc2168aa1cefc6c784c1c615ba7",
+    "ghqnet/curriculum.py": "0cd0ddfeaa35e08d2fcf17f23fe98ec5149013229dcdfe76e404bc4936ee5fbd",
+    "ghqnet/curriculum_pipeline.py": "ac4df3bd4b4f76890e7ac58a6f6ed263fe81bd610013929952a087a5b6ce82fb",
+    "ghqnet/data.py": "b645e0f1c866fc15729afcda0c8597a2895788ecc91257acc3b6e6c7bbd7391c",
+    "ghqnet/encoding.py": "bd02222ae09814f86f036b05417c03090a4e188dc2a472a9a34363022a4b3bf5",
+    "ghqnet/evaluate_replay.py": "2cbe70e90a21b5aed00f774e47d39b90ffbe3849f4baeb2ea5a3f10f6bd5905c",
+    "ghqnet/mcts.py": "19baa46b85d561a3f527006062809985caa35305656365067224d7ce830ee041",
+    "ghqnet/model.py": "d05744cf00993b2c388fb5153d5f0fd0e6032eb40cf3105a946d8162f54bd3e5",
+    "ghqnet/pipeline.py": "fcba19a689b561e6bbace64a93977ac8a3e8b50fbbe930e34f97d749372029fa",
+    "ghqnet/rules.py": "4e6111c6024b5861067e57fd5ecc96f2afd46de676aa735b48b6c0b49af847ed",
+    "ghqnet/selfplay.py": "dc09a6b2234238734494fb22da059c0295ae847666ae6fa5b0e06b81414a2dc0",
+    "ghqnet/suite.py": "d336d163e12ddcefd8dbfbab90292d84ef853cdc294d995de7f8b90827f2aec4",
+    "ghqnet/tactics.py": "b691e9f3b5dbf531420cd94ac155d2b1b97cd330e0e9b53ad46b9ab161c9693d",
+    "ghqnet/train.py": "5ce9ccb71c651006ea995cbe08497576b3edcc93ddc011aaebe4066b8e34722d",
+    "ghqnet/training_budget.py": "aebafb592496a6602e3ea2c05bebadbe8faf6a21e15704ed925ef32bb003298f",
+    "ghqnet/update_evaluation.py": "565f80f53a8720ab207b44646c649ab2146548c17fe70d19e374e646d68bf2ee",
+    "ghqnet/update_size_decision.py": "c049a7dccd2630fae0f3e6818f0e4c9236783e9752357ceb24a9058c9993b3ac",
+    "ghqnet/value_experiment_data.py": "1fc790feb7280255e8a9545d9fdee90364a3c6d0719645f90732467e0301761f",
+    "ghqnet/value_experiment_decision.py": "f022823512d826beaf04cff71bc12ab17b49696aa004278722ceec48ca968e73",
+    "ghqnet/value_targets.py": "20be622af5718f968dfcfac816e0b80d8804e98455ba245f9a309201f15a658c",
+    ".data/neural/update-size-20261122/prepare_plan.py": "2351945df8406e737ab2e7b9ddbf713073f05a0845001fc50b3b1b589a77e65a",
+    ".data/neural/update-size-20261122/run_experiment.py": "b65b8d53235c61c330903ff6c9cfa56a4db02dd5d040aaab4921e8ba8e780cee"
+  },
+  "limitations": [
+    "Existing development families and shuffle seeds are reused; these are calibration results, not independent confirmation.",
+    "Only value labels are restricted to verified self-play; every policy row remains unchanged.",
+    "Three shuffle seeds are optimization replications, not independent game samples.",
+    "The old 0.001 B results remain descriptive reference only; no additional rate search or automatic arena extension."
+  ],
+  "promoted": false,
+  "automatic_gpu_allocation": false,
+  "prelaunch_revision": {
+    "previous_plan": "/Users/tyler/dev/ghq/.data/neural/update-size-20261122/plan.json",
+    "previous_plan_sha256": "606f1922e1329e17f28b42ad78086ed5d36eaf2f4e869807f0390e9fca4c2d35",
+    "at": "2026-11-22T13:16:22.360066+00:00",
+    "reason": "Added selected checkpoint SHA verification before tactics and arena; settings, roots and selection unchanged. No model inference or training had started."
+  }
+}

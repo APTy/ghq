@@ -1,0 +1,11 @@
+{
+  "learning-rates": [
+    0.001,
+    0.0003
+  ],
+  "epochs": 1,
+  "batch-size": 128,
+  "threads": 2,
+  "seed": 20261121,
+  "max-seconds": 1200
+}

@@ -6,6 +6,7 @@ import math
 import os
 from pathlib import Path
 import tempfile
+import time
 
 import numpy as np
 import torch
@@ -17,6 +18,7 @@ from .rules import PUBLIC, terminal_value
 
 MODEL_VERSION = 1
 CHECKPOINT_VERSION = 1
+_ACTION_MAXIMA = np.asarray([64, 64, 64, 8, 5, 7], dtype=np.int64)
 
 
 @dataclass(frozen=True)
@@ -106,6 +108,8 @@ class TorchEvaluator:
     Exact terminal values bypass the model. The network is always in eval mode;
     callers training the same instance must restore train mode for each update.
     """
+    supports_inference_profile = True
+
     def __init__(self, model: PolicyValueNet, device="cpu"):
         self.device = torch.device(device)
         self.model = model.to(self.device).eval()
@@ -113,7 +117,7 @@ class TorchEvaluator:
     def predict(self, board, legal_moves):
         return self.predict_batch([board], [legal_moves])[0]
 
-    def predict_batch(self, boards: Sequence, legal_moves: Sequence):
+    def predict_batch(self, boards: Sequence, legal_moves: Sequence, *, profile=None):
         if len(boards) != len(legal_moves):
             raise ValueError("boards and legal_moves must have equal lengths")
         results = [None] * len(boards)
@@ -128,26 +132,87 @@ class TorchEvaluator:
                 pending.append(index)
         if not pending:
             return results
-        max_actions = max(len(legal_moves[index]) for index in pending)
-        encoded = np.zeros((len(pending), max_actions, 6), dtype=np.int64)
-        mask = np.zeros((len(pending), max_actions), dtype=np.bool_)
-        for batch_index, index in enumerate(pending):
-            count = len(legal_moves[index])
-            encoded[batch_index, :count] = encode_actions(boards[index], legal_moves[index])
-            mask[batch_index, :count] = True
-        board_inputs = np.stack([encode_board(boards[index]) for index in pending])
+        tick = time.perf_counter() if profile is not None else 0
+        board_inputs = [encode_board(boards[index]) for index in pending]
+        action_inputs = [encode_actions(boards[index], legal_moves[index]) for index in pending]
+        if profile is not None:
+            profile["encode_seconds"] = profile.get("encode_seconds", 0.0) + time.perf_counter() - tick
+        predictions = self.predict_encoded_batch(board_inputs, action_inputs, profile=profile)
+        for index, prediction in zip(pending, predictions):
+            results[index] = prediction
+        return results
+
+    def predict_encoded_batch(self, board_inputs: Sequence, action_inputs: Sequence, *, profile=None):
+        """Score already canonicalized nonterminal inputs, without rules parsing.
+
+        Each board is a finite float32 ndarray [C,8,8]; its aligned legal actions
+        are an int64 ndarray [A,6], A>=1, in the original requested order.
+        Callers must handle terminals before this entry point. The result has
+        the same (probabilities, current-player W-minus-L) contract as predict.
+
+        Optional ``profile`` accumulates calls, rows and phase *_seconds.
+        Packing includes validation/padding; forward includes both softmaxes;
+        d2h_postprocess includes output transfers, validation and Python lists.
+        CPU phases are wall time. Explicit CUDA profiling synchronizes phase
+        boundaries and reports synchronized wall time, not GPU event time.
+        No extra CUDA synchronization is added when profiling is disabled.
+        """
+        if len(board_inputs) != len(action_inputs):
+            raise ValueError("board_inputs and action_inputs must have equal lengths")
+        if not len(board_inputs):
+            return []
+
+        def boundary():
+            if self.device.type == "cuda":
+                torch.cuda.synchronize(self.device)
+            return time.perf_counter()
+
+        tick = boundary() if profile is not None else 0
+        counts = []
+        for board, actions in zip(board_inputs, action_inputs):
+            if (not isinstance(board, np.ndarray) or board.dtype != np.float32 or
+                    board.shape != (BOARD_CHANNELS, 8, 8)):
+                raise ValueError(f"Each board input must be float32 [{BOARD_CHANNELS},8,8]")
+            if (not isinstance(actions, np.ndarray) or actions.dtype != np.int64 or
+                    actions.ndim != 2 or actions.shape[1] != 6 or not len(actions)):
+                raise ValueError("Each action input must be int64 [A,6] with at least one action")
+            if np.any(actions < 0) or np.any(actions > _ACTION_MAXIMA):
+                raise ValueError("Encoded action descriptor out of range")
+            counts.append(len(actions))
+        boards = np.stack(board_inputs)
+        if not np.isfinite(boards).all():
+            raise ValueError("Board inputs must be finite")
+        encoded = np.zeros((len(counts), max(counts), 6), dtype=np.int64)
+        mask = np.zeros(encoded.shape[:2], dtype=np.bool_)
+        for index, (actions, count) in enumerate(zip(action_inputs, counts)):
+            encoded[index, :count] = actions
+            mask[index, :count] = True
+        packing_end = time.perf_counter() if profile is not None else 0
         self.model.eval()
         with torch.inference_mode():
-            policy, wdl = self.model(torch.from_numpy(board_inputs).to(self.device),
-                                     torch.from_numpy(encoded).to(self.device),
-                                     torch.from_numpy(mask).to(self.device))
-            probabilities = policy.softmax(dim=-1).cpu().numpy()
-            wdl = wdl.softmax(dim=-1).cpu().numpy()
+            board_tensor = torch.from_numpy(boards).to(self.device)
+            action_tensor = torch.from_numpy(encoded).to(self.device)
+            mask_tensor = torch.from_numpy(mask).to(self.device)
+            h2d_end = boundary() if profile is not None else 0
+            policy, wdl = self.model(board_tensor, action_tensor, mask_tensor)
+            policy, wdl = policy.softmax(dim=-1), wdl.softmax(dim=-1)
+            forward_end = boundary() if profile is not None else 0
+            probabilities, wdl = policy.cpu().numpy(), wdl.cpu().numpy()
         if not np.isfinite(probabilities).all() or not np.isfinite(wdl).all():
             raise ValueError("Network produced nonfinite probabilities")
-        for batch_index, index in enumerate(pending):
-            results[index] = (probabilities[batch_index, :len(legal_moves[index])].tolist(),
-                              float(wdl[batch_index, 0] - wdl[batch_index, 2]))
+        results = [(probabilities[index, :count].tolist(), float(wdl[index, 0] - wdl[index, 2]))
+                   for index, count in enumerate(counts)]
+        if profile is not None:
+            end = boundary()
+            profile.update(device=str(self.device), timing_scope=("synchronized_wall_seconds"
+                           if self.device.type == "cuda" else "wall_seconds"))
+            profile["calls"] = profile.get("calls", 0) + 1
+            profile["rows"] = profile.get("rows", 0) + len(counts)
+            for name, duration in (("packing_seconds", packing_end - tick),
+                                   ("h2d_seconds", h2d_end - packing_end),
+                                   ("forward_seconds", forward_end - h2d_end),
+                                   ("d2h_postprocess_seconds", end - forward_end)):
+                profile[name] = profile.get(name, 0.0) + duration
         return results
 
 

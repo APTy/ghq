@@ -7,6 +7,7 @@ import argparse
 from dataclasses import asdict
 import hashlib
 import json
+import math
 from pathlib import Path
 import platform
 import random
@@ -33,16 +34,18 @@ def parser():
     result = argparse.ArgumentParser(description=__doc__)
     result.add_argument("--output", type=Path, required=True)
     result.add_argument("--resume", type=Path, help="Resume model/optimizer from a trusted checkpoint")
-    result.add_argument("--iterations", type=int, default=2)
-    result.add_argument("--games", type=int, default=16, help="Self-play games per iteration")
-    result.add_argument("--teacher-games", type=int, default=4, help="CPU warm-start games; only on a new run")
+    result.add_argument("--iterations", type=int, default=None)
+    result.add_argument("--games", type=int, default=None, help="Games per update (16 prototype, 200 curriculum)")
+    result.add_argument("--teacher-games", type=int, default=None, help="CPU warm-start games; prototype mode only")
     result.add_argument("--teacher-ms", type=float, default=600)
-    result.add_argument("--simulations", type=int, default=64)
-    result.add_argument("--max-turns", type=int, default=100)
+    result.add_argument("--simulations", type=int, default=None)
+    result.add_argument("--max-turns", type=int, default=None)
     result.add_argument("--opening-turns", type=int, default=2)
-    result.add_argument("--epochs", type=int, default=2)
+    result.add_argument("--epochs", type=int, default=None)
     result.add_argument("--batch-size", type=int, default=64)
-    result.add_argument("--replay-size", type=int, default=20000)
+    result.add_argument("--replay-size", type=int, default=None)
+    result.add_argument("--replay-ratio", type=float, default=None,
+                        help="Curriculum only: row exposures per new unique training state (default 1); immutable on resume")
     result.add_argument("--learning-rate", type=float, default=1e-3,
                         help="Initial optimizer rate; resume retains checkpoint optimizer settings")
     result.add_argument("--blocks", type=int, default=6)
@@ -50,15 +53,96 @@ def parser():
     result.add_argument("--seed", type=int, default=20261120)
     result.add_argument("--threads", type=int, default=2)
     result.add_argument("--device", choices=("auto", "cpu", "cuda", "mps"), default="auto")
+    result.add_argument("--curriculum", action="store_true", help="Use batched mixed opponents and independent holdouts")
+    result.add_argument("--validate-only", action="store_true", help="Validate configuration without generating games or training")
+    result.add_argument("--total-games", type=int, default=0, help="Cumulative mixed-game target across resumes; zero uses iteration count")
+    result.add_argument("--teacher-positions", type=int, default=50000)
+    result.add_argument("--teacher-max-games", type=int, default=2000)
+    result.add_argument("--teacher-update-games", type=int, default=200)
+    result.add_argument("--teacher-depth", type=int, default=3)
+    result.add_argument("--teacher-beam-width", type=int, default=8)
+    result.add_argument("--workers", type=int, default=8)
+    result.add_argument("--inference-batch-size", type=int, default=32)
+    result.add_argument("--batch-wait-ms", type=float, default=5)
+    result.add_argument("--inference-protocol", choices=("auto", "legacy", "encoded"), default="auto")
+    result.add_argument("--profile-inference", action="store_true",
+                        help="Record inference phases with device synchronization; use only for diagnostics")
+    result.add_argument("--game-timeout-seconds", type=float, default=900)
+    result.add_argument("--max-seconds", type=float, default=None, help="Soft run deadline including collection and training")
+    result.add_argument("--checkpoint-reserve-seconds", type=float, default=120)
+    result.add_argument("--cpu-fraction", type=float, default=0.4)
+    result.add_argument("--history-fraction", type=float, default=0.2)
+    result.add_argument("--history-size", type=int, default=4)
+    result.add_argument("--middlegame-fraction", type=float, default=0.25)
+    result.add_argument("--start-pool-size", type=int, default=2048)
+    result.add_argument("--validation-fraction", type=float, default=0.1)
+    result.add_argument("--validation-size", type=int, default=10000)
+    result.add_argument("--teacher-replay-fraction", type=float, default=0.2)
+    result.add_argument("--hard-replay-fraction", type=float, default=0.1)
+    result.add_argument("--input-replay", type=Path, action="append", default=[])
+    result.add_argument("--exclude-manifest", type=Path, action="append", default=[])
     return result
 
 
-def run(args):
+def validate_args(args):
+    for name, value in vars(args).items():
+        if isinstance(value, float) and not math.isfinite(value):
+            raise ValueError(f"--{name.replace('_', '-')} must be finite")
+    defaults = {"iterations": (2, 10), "games": (16, 200), "teacher_games": (4, 0),
+                "simulations": (64, 256), "max_turns": (100, 150), "epochs": (2, 1),
+                "replay_size": (20000, 250000)}
+    for name, choices in defaults.items():
+        if getattr(args, name) is None:
+            setattr(args, name, choices[int(args.curriculum)])
+    if args.replay_ratio is not None and not args.curriculum:
+        raise ValueError("--replay-ratio requires --curriculum")
+    if args.curriculum:
+        if args.replay_ratio is None:
+            args.replay_ratio = 1.0
+        if args.replay_ratio < 0:
+            raise ValueError("--replay-ratio must be nonnegative")
     for name in ("iterations", "games", "simulations", "max_turns", "epochs", "batch_size", "replay_size", "threads"):
         if getattr(args, name) < 1:
             raise ValueError(f"--{name.replace('_', '-')} must be positive")
     if args.teacher_games < 0 or args.opening_turns < 0 or args.teacher_ms <= 0 or args.learning_rate <= 0:
         raise ValueError("Invalid teacher, opening, or learning-rate argument")
+    if args.curriculum:
+        for name in ("teacher_max_games", "teacher_update_games", "teacher_depth", "teacher_beam_width",
+                     "workers", "inference_batch_size", "history_size", "validation_size", "start_pool_size"):
+            if getattr(args, name) < 1:
+                raise ValueError(f"--{name.replace('_', '-')} must be positive")
+        if min(args.total_games, args.teacher_positions, args.batch_wait_ms) < 0:
+            raise ValueError("Curriculum targets and batch wait must be nonnegative")
+        if args.game_timeout_seconds <= 0 or args.checkpoint_reserve_seconds <= 0:
+            raise ValueError("Timeout and checkpoint reserve must be positive")
+        if args.workers > 64 or args.inference_batch_size > 64:
+            raise ValueError("Workers and inference batch size must be at most 64")
+        if args.max_seconds is not None and args.max_seconds <= args.checkpoint_reserve_seconds:
+            raise ValueError("--max-seconds must exceed --checkpoint-reserve-seconds")
+        for first, second in ((args.cpu_fraction, args.history_fraction),
+                              (args.teacher_replay_fraction, args.hard_replay_fraction)):
+            if min(first, second) < 0 or first + second > 1:
+                raise ValueError("Curriculum proportions must be nonnegative and sum to at most one")
+        if not 0 <= args.validation_fraction < 1 or not 0 <= args.middlegame_fraction <= 1:
+            raise ValueError("Invalid validation or middlegame fraction")
+        for path in (*args.input_replay, *args.exclude_manifest):
+            if not path.is_file():
+                raise ValueError(f"Curriculum input does not exist: {path}")
+    return args
+
+
+def run(args):
+    validate_args(args)
+    if args.validate_only:
+        result = {"valid": True, "curriculum": args.curriculum,
+                  "games_per_update": args.games, "simulations": args.simulations,
+                  "total_games": args.total_games, "replay_size": args.replay_size,
+                  "replay_ratio": args.replay_ratio}
+        print(json.dumps(result))
+        return result
+    if args.curriculum:
+        from .curriculum_pipeline import run_curriculum
+        return run_curriculum(args)
     if args.output.exists() and any(args.output.iterdir()) and args.resume is None:
         raise ValueError("Output directory is nonempty; choose a new run or explicitly --resume")
     device = device_name(args.device)
