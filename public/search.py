@@ -19,12 +19,14 @@ from engine import (
     scan_forward, between, between_inclusive_end,
 )
 
-ENGINE_VERSION = "ghq-cpu-4"
+ENGINE_VERSION = "ghq-cpu-5"
 WIN = 10000.0
 popcount = int.bit_count
 VALUES = {HQ: 0.0, INFANTRY: 1.0, ARMORED_INFANTRY: 2.0,
-          AIRBORNE_INFANTRY: 4.0, ARTILLERY: 3.0,
+          AIRBORNE_INFANTRY: 5.0, ARTILLERY: 3.0,
           ARMORED_ARTILLERY: 4.0, HEAVY_ARTILLERY: 5.0}
+AIRBORNE_HOME_BONUS = 0.5
+AIRBORNE_POSITION_SCALE = 0.25
 RADIUS_TWO = [sum(BB_SQUARES[target] for target in range(64)
                   if max(abs(square % 8 - target % 8), abs(square // 8 - target // 8)) <= 2)
               for square in range(64)]
@@ -280,7 +282,14 @@ def evaluate(board, cluster_cache=None):
                     exit_count = popcount(exits)
                 if bit & infantry:
                     # Nearby infantry can coordinate a capture during this turn.
-                    score += INFANTRY_POSITION[color][square]
+                    if piece_type == AIRBORNE_INFANTRY:
+                        # Preserve the option to paradrop instead of developing
+                        # this unit toward the center like ordinary infantry.
+                        score += AIRBORNE_POSITION_SCALE * INFANTRY_POSITION[color][square]
+                        if advance == 0:
+                            score += AIRBORNE_HOME_BONUS
+                    else:
+                        score += INFANTRY_POSITION[color][square]
                     score += 0.045 * popcount(BB_REGULAR_MOVES[square] & friendly_infantry)
                     score += HQ_APPROACH[square][enemy_hq]
                     score += 0.009 * min(12, exit_count)

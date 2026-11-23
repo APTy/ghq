@@ -337,12 +337,25 @@ class SearchTests(unittest.TestCase):
         self.assertTrue(after.occupied_co[e.RED] & after.airborne_infantry)
         self.assertTrue(any(e.Move.from_uci(uci).capture_preference == e.D5 for uci in result["turnMoves"]))
 
-    def test_profitable_airborne_sacrifice_for_heavy_artillery(self):
+    def test_paratrooper_prefers_preserving_jump_over_quiet_centralization(self):
+        home = position({"a1": "Q", "h8": "q", "b1": "P"})
+        central = position({"a1": "Q", "h8": "q", "d4": "P"})
+        for at_home, advanced in ((home, central), (home.mirror(), central.mirror())):
+            sign = 1 if at_home.turn == e.RED else -1
+            self.assertGreater(sign * search.evaluate(at_home), sign * search.evaluate(advanced))
+            result = analyze(at_home, time_ms=1000, max_depth=1)
+            after = self.assert_legal_line(at_home, result["turnMoves"])
+            home_rank = e.BB_RANK_1 if at_home.turn == e.RED else e.BB_RANK_8
+            self.assertTrue(after.airborne_infantry & after.occupied_co[at_home.turn] & home_rank)
+
+    def test_airborne_preserves_jump_instead_of_equal_material_sacrifice(self):
         board = position({"a1": "Q", "h8": "q", "b1": "P", "e5": "h↑", "d5": "i", "f5": "i"})
         result = analyze(board, time_ms=1000, max_depth=2)
         after = self.assert_legal_line(board, result["turnMoves"])
-        self.assertFalse(after.heavy_artillery & after.occupied_co[e.BLUE])
-        self.assertTrue(any(e.Move.from_uci(uci).capture_preference == e.E5 for uci in result["turnMoves"]))
+        # Heavy artillery and airborne infantry now both have base value 5.
+        # Giving up the home-rank jump option makes this sacrifice unattractive.
+        self.assertTrue(after.heavy_artillery & after.occupied_co[e.BLUE])
+        self.assertTrue(after.airborne_infantry & after.occupied_co[e.RED] & e.BB_RANK_1)
 
     def test_overlapping_threats_do_not_make_material_negative(self):
         board = position({"a1": "Q", "h8": "q", "d4": "R↑", "c4": "i", "e4": "i"})
