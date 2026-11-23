@@ -239,12 +239,16 @@ export function addGameServerRoutes(
       // Check for gameover due to timeout or something already on the board.
       const gameoverDueToTimeout = game.getGameover();
       if (gameoverDueToTimeout) {
-        turns.push(gameEndTurnFromGameover(turn.turn, gameoverDueToTimeout));
+        if (!turns[turns.length - 1]?.status) {
+          turns.push(gameEndTurnFromGameover(turn.turn, gameoverDueToTimeout));
+        }
         return {
           ...match,
+          pgn: createPGN(turns),
           status: gameoverDueToTimeout.status,
           winner_id: getWinnerId(gameoverDueToTimeout),
           gameover_reason: gameoverDueToTimeout.reason,
+          current_turn_player_id: null,
         };
       }
 
@@ -267,22 +271,25 @@ export function addGameServerRoutes(
         updatedMatch.status = gameover.status;
         updatedMatch.winner_id = getWinnerId(gameover);
         updatedMatch.gameover_reason = gameover.reason;
-        turns.push(gameEndTurnFromGameover(turn.turn + 1, gameover));
+        if (!turn.status) {
+          turns.push(gameEndTurnFromGameover(turn.turn + 1, gameover));
+        }
       }
       updatedMatch.pgn = createPGN(turns);
 
       // Update the current player turn user id
-      updatedMatch.current_turn_player_id =
-        game.currentPlayerTurn() === "RED"
-          ? match.player0_id
-          : match.player1_id;
+      updatedMatch.current_turn_player_id = gameover
+        ? null
+        : game.currentPlayerTurn() === "RED"
+        ? match.player0_id
+        : match.player1_id;
 
       return updatedMatch;
     });
 
     if (updatedMatch.status) {
       await deleteActiveMatches(updatedMatch.id);
-      await updateUserElos(match);
+      await updateUserElos(updatedMatch);
     }
 
     ctx.body = JSON.stringify({ success: true });

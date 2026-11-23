@@ -808,6 +808,11 @@ export class GameClient {
       return undefined;
     }
 
+    // Explicit results (such as resignation) do not change the board or clock.
+    if (this.gameover) {
+      return this.gameover;
+    }
+
     const currentPlayer = this.currentPlayerTurn();
     const currentPlayerTimeLeftMs = this.getPlayerTimeLeftMs(
       currentPlayer,

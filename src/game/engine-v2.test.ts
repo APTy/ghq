@@ -38,6 +38,7 @@ function fakeEngine(): GameEngine {
 
 describe("GameClient terminal history", () => {
   it.each([
+    { status: "resign", winner: "BLUE", moves: [] },
     { status: "hq-capture", winner: "BLUE", moves: ["a8a7xb1"] },
     { status: "double-skip", winner: undefined, moves: ["skip"] },
   ] as const)(
@@ -51,7 +52,7 @@ describe("GameClient terminal history", () => {
       const turn: Turn = {
         turn: 1,
         moves: moves.map(allowedMoveFromUci),
-        elapsedSecs: 2.4,
+        elapsedSecs: moves.length ? 2.4 : 0,
         status,
         winner,
       };
@@ -62,9 +63,43 @@ describe("GameClient terminal history", () => {
         reason: status,
         winner,
       });
+      expect(game.getGameover()).toEqual(game.gameover);
       expect(game.turn).toBe(2);
     }
   );
+
+  it("preserves a resignation result even after the clock expires", () => {
+    const game = new GameClient({
+      engine: fakeEngine(),
+      isPassAndPlayMode: true,
+      timeControl: { time: 60, bonus: 0 },
+      gameStartTimeMs: Date.now() - 120_000,
+    });
+    game.pushTurn({
+      turn: 1,
+      moves: [],
+      elapsedSecs: 0,
+      status: "resign",
+      winner: "RED",
+    });
+    expect(game.getGameover()).toEqual({
+      status: "WIN",
+      winner: "RED",
+      reason: "resign",
+    });
+  });
+
+  it("keeps replay outcome detection disabled for terminal history", () => {
+    const game = new GameClient({ engine: fakeEngine(), isReplayMode: true });
+    game.pushTurn({
+      turn: 1,
+      moves: [],
+      elapsedSecs: 0,
+      status: "resign",
+      winner: "BLUE",
+    });
+    expect(game.getGameover()).toBeUndefined();
+  });
 
   it("exports a locally detected terminal outcome", async () => {
     const game = new GameClient({
