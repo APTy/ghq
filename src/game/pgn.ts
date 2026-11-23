@@ -18,11 +18,11 @@ export function turnToString(turn: Turn): string {
     // A terminal capture or draw acceptance still belongs to its played turn.
     // Keep its actions and clock in the same record so reload can replay them.
     if (turn.moves.length) {
-      return `${turn.turn}. ${moves} ${outcome} {[%emt ${turn.elapsedSecs}] [%sts ${turn.status}]}`;
+      return `${turn.turn}. ${moves} ${outcome} {[%emt ${turn.elapsedSecs.toFixed(1)}] [%sts ${turn.status}]}`;
     }
     return `${outcome} {[%sts ${turn.status}]}`;
   }
-  return `${turn.turn}. ${moves} {[%emt ${turn.elapsedSecs}]}`;
+  return `${turn.turn}. ${moves} {[%emt ${turn.elapsedSecs.toFixed(1)}]}`;
 }
 
 function parseTurn(line: string, turn: number): Turn {
