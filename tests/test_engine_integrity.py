@@ -47,6 +47,33 @@ def free_capture_position():
 
 
 class EngineIntegrityTests(unittest.TestCase):
+    def test_isolated_capture_cluster_preserves_allowance_mask(self):
+        board = position((e.A1, e.HQ, e.RED), (e.H8, e.HQ, e.BLUE),
+                         (e.D4, e.INFANTRY, e.RED))
+        cluster = e.BB_SQUARES[e.D4]
+        self.assertEqual(board._find_free_captures_for_cluster(board.occupied_co, cluster, e.RED),
+                         [e.BB_EMPTY, cluster])
+        self.assertEqual(board._find_free_captures_for_cluster(board.occupied_co, cluster, e.BLUE),
+                         [e.BB_EMPTY, e.BB_EMPTY])
+
+    def test_moves_preserve_recomputed_coverage_and_adjacency(self):
+        # Include every legal successor at sampled positions: rotations,
+        # overlapping batteries, infantry movement, reinforcements and captures.
+        board = e.BaseBoard()
+        rng = random.Random(4173)
+        for _ in range(80):
+            if board.outcome() is not None:
+                break
+            moves = list(board.generate_legal_moves())
+            for move in moves:
+                child = board.copy()
+                child.push(move)
+                for color in (e.RED, e.BLUE):
+                    self.assertEqual(child.bombarded_co[color], child.get_bombarded_squares(color))
+                    self.assertEqual(child.adjacent_infantry_squares_co[color],
+                                     child.get_adjacent_infantry_squares(color))
+            board.push(rng.choice(moves))
+
     def assert_mirror_equivalent(self, board):
         expected = {mirror_move(move).uci() for move in board.generate_legal_moves()}
         mirrored = board.mirror()

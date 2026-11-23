@@ -1025,7 +1025,7 @@ class BaseBoard:
             return square
         return None
 
-    def _remove_piece_at(self, square: Square) -> Optional[PieceType]:
+    def _remove_piece_at(self, square: Square, *, update_derived: bool = True) -> Optional[PieceType]:
         piece_type = self.piece_type_at(square)
         piece_color = self.color_at(square)
         mask = BB_SQUARES[square]
@@ -1055,10 +1055,10 @@ class BaseBoard:
 
         self.set_orientation(square, None)
 
-        if is_artillery(piece_type):
+        if update_derived and is_artillery(piece_type):
             self.bombarded_co[piece_color] = self.get_bombarded_squares(piece_color)
 
-        if is_infantry(piece_type):
+        if update_derived and is_infantry(piece_type):
             self.adjacent_infantry_squares_co[piece_color] = self.get_adjacent_infantry_squares(piece_color)
 
         return piece_type
@@ -1842,7 +1842,9 @@ class BaseBoard:
         if move.to_square is None:
             raise ValueError(f"invalid move: {move}")
 
-        piece_type = self._remove_piece_at(move.from_square)
+        # Reinsertion below rebuilds the moving color's derived masks once.
+        # No rule queries occur between removal and reinsertion.
+        piece_type = self._remove_piece_at(move.from_square, update_derived=False)
         assert piece_type is not None, f"push() expects move to be pseudo-legal, but got {move} in {self.board_fen()}"
         self._set_piece_at(move.to_square, piece_type, self.turn, move.orientation)
 
@@ -1955,6 +1957,12 @@ class BaseBoard:
 
     def _find_free_captures_for_cluster(self, occupied_co: List[Bitboard], cluster: Bitboard, color: Color):
         our_infantry = cluster & occupied_co[color]
+        if not our_infantry:
+            return [BB_EMPTY, BB_EMPTY]
+        # An isolated unit cannot capture anything, including artillery/HQ.
+        if not cluster & (cluster - 1) and not (
+                BB_ADJACENT_SQUARES[cluster.bit_length() - 1] & occupied_co[not color]):
+            return [BB_EMPTY, our_infantry]
         enemy_infantry = cluster & occupied_co[not color]
 
         num_our_infantry = popcount(our_infantry)

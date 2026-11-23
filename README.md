@@ -76,3 +76,17 @@ completed search depth. Games stopped by the turn cap are unfinished, not
 draws. A short smoke run is useful for regressions; it does not establish Elo
 or an overall strength gain. Native Python throughput also differs from
 browser WebAssembly, so test important positions in both runtimes.
+
+Profile a complete CPU-versus-itself game, with an unprofiled baseline and
+identical fixed-depth search work under cProfile:
+
+```sh
+python3 -B scripts/profile_selfplay.py --output .data/profiles/selfplay
+```
+
+The output directory must be new. It contains `report.json`, `selfplay.prof`,
+and `rules-replay.prof`. The default is depth 1, beam width 4; use `--depth`
+and `--beam-width` for larger searches. A search timeout invalidates the run;
+`--max-turns` exhaustion is explicitly unfinished. The rules replay measures
+legal-action enumeration, execution, and outcome checks across the same game,
+without search. See [the measured bottleneck report](docs/python-selfplay-profile.md).

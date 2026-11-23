@@ -25,6 +25,29 @@ def analyze(board, **options):
 
 
 class SearchTests(unittest.TestCase):
+    def test_topology_cache_preserves_scores_across_legal_successors(self):
+        board = e.BaseBoard()
+        rng = random.Random(4173)
+        cache = {}
+        for _ in range(60):
+            if search._terminal(board):
+                break
+            moves = list(board.generate_legal_moves())
+            for move in moves:
+                child = board.copy()
+                child.push(move)
+                before = child.serialize()
+                self.assertEqual(search.evaluate(child), search.evaluate(child, cache))
+                self.assertEqual(before, child.serialize())
+                self.assertLessEqual(len(cache), search.CLUSTER_CACHE_LIMIT)
+            board.push(rng.choice(moves))
+
+    def test_topology_cache_eviction_preserves_score(self):
+        board = e.BaseBoard()
+        cache = {i: () for i in range(search.CLUSTER_CACHE_LIMIT)}
+        self.assertEqual(search.evaluate(board), search.evaluate(board, cache))
+        self.assertEqual(len(cache), 1)
+
     def assert_legal_line(self, board, moves):
         result = board.copy()
         for index, uci in enumerate(moves):

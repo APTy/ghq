@@ -33,6 +33,21 @@ RADIUS_THREE = [sum(BB_SQUARES[target] for target in range(64)
                 for square in range(64)]
 
 
+# Keep the original arithmetic grouping and square iteration order so these
+# tables preserve exact scores (including floating-point tie breaking).
+ADVANCE = [[square // 8 if color == RED else 7 - square // 8
+            for square in range(64)] for color in range(2)]
+INFANTRY_POSITION = [[0.035 * ADVANCE[color][square] + 0.025 * (3.5 - abs(3.5 - square % 8))
+                      for square in range(64)] for color in range(2)]
+ARTILLERY_POSITION = [[0.06 * ADVANCE[color][square] + 0.02 * (3.5 - abs(3.5 - square % 8))
+                       for square in range(64)] for color in range(2)]
+COVERAGE_POSITION = [[0.02 + 0.018 * ADVANCE[color][square] + 0.008 * (3.5 - abs(3.5 - square % 8))
+                     for square in range(64)] for color in range(2)]
+HQ_APPROACH = [[0.045 * max(0, 7 - abs(square % 8 - hq % 8) - abs(square // 8 - hq // 8))
+                for hq in range(64)] for square in range(64)]
+CLUSTER_CACHE_LIMIT = 4096
+
+
 def _make_fire_lines():
     # Use the rules engine's geometry once, rather than recomputing each
     # battery's ray in every evaluation. Occupied squares do not block fire.
@@ -194,8 +209,11 @@ def _artillery_capture_threats(board, attacker):
             ((landings & ~BB_FILE_H) << 1) | ((landings & ~BB_FILE_A) >> 1)) & BB_ALL
 
 
-def evaluate(board):
+def evaluate(board, cluster_cache=None):
     """Pure, color-symmetric static evaluation; never push or generate moves.
+
+    Does not mutate the board. The optional search-owned topology cache is
+    bounded and contains only immutable cluster tuples, not capture state.
 
     Reserves already have material value. Deployment earns a modest tempo
     premium, not the value of an entirely new piece. Mobility and infantry
@@ -235,23 +253,20 @@ def evaluate(board):
             score += 0.85 * value * board.reserves[color].get_count(piece_type)
             for square in scan_forward(mask & ours):
                 bit = BB_SQUARES[square]
-                rank, file = divmod(square, 8)
-                advance = rank if color == RED else 7 - rank
-                center = 3.5 - abs(3.5 - file)
+                advance = ADVANCE[color][square]
                 score += value
                 exits = _safe_destinations(board, square, color)
                 exit_count = popcount(exits)
                 if bit & infantry:
                     # Nearby infantry can coordinate a capture during this turn.
-                    score += 0.035 * advance + 0.025 * center
+                    score += INFANTRY_POSITION[color][square]
                     score += 0.045 * popcount(BB_REGULAR_MOVES[square] & friendly_infantry)
-                    distance = abs(file - (enemy_hq % 8)) + abs(rank - (enemy_hq // 8))
-                    score += 0.045 * max(0, 7 - distance)
+                    score += HQ_APPROACH[square][enemy_hq]
                     score += 0.009 * min(12, exit_count)
                     if bit & enemy_adjacent:
                         score -= 0.07
                 else:
-                    score += 0.06 * advance + 0.02 * center
+                    score += ARTILLERY_POSITION[color][square]
                     score += 0.012 * popcount(BB_REGULAR_MOVES[square] & empty_safe)
                     if bit & artillery_threats:
                         can_escape = color == board.turn and not (bit & board.turn_pieces)
@@ -293,9 +308,7 @@ def evaluate(board):
                     exposure[square] = max(exposure[square], value * risk)
         coverage = board.bombarded_co[color]
         for square in scan_forward(coverage):
-            rank, file = divmod(square, 8)
-            advance = rank if color == RED else 7 - rank
-            score += 0.02 + 0.018 * advance + 0.008 * (3.5 - abs(3.5 - file))
+            score += COVERAGE_POSITION[color][square]
         score += 0.1 * popcount(coverage & theirs & ~board.hq)
         score += 0.035 * popcount(coverage & BB_REGULAR_MOVES[enemy_hq])
         hq_bit = BB_SQUARES[hq_square]
@@ -325,7 +338,19 @@ def evaluate(board):
     # fill the beam with different ways of abandoning the very same unit. This
     # read-only cluster query uses the rules engine's engagement accounting;
     # it neither generates moves nor changes pending-capture bookkeeping.
-    for cluster in board._find_adjacency_clusters(board.occupied_co, infantry):
+    if cluster_cache is None:
+        clusters = board._find_adjacency_clusters(board.occupied_co, infantry)
+    else:
+        # Cache topology only: capture allowances still inspect current artillery
+        # orientations and occupancy. Immutable values never share rule bookkeeping.
+        topology = (*board.occupied_co, infantry)
+        clusters = cluster_cache.get(topology)
+        if clusters is None:
+            clusters = tuple(board._find_adjacency_clusters(board.occupied_co, infantry))
+            if len(cluster_cache) >= CLUSTER_CACHE_LIMIT:
+                cluster_cache.clear()
+            cluster_cache[topology] = clusters
+    for cluster in clusters:
         for attacker in (RED, BLUE):
             victims, allowance = board._find_free_captures_for_cluster(board.occupied_co, cluster, attacker)
             if not victims:
@@ -449,6 +474,7 @@ class _Search:
         self.inner_width = max(2, min(4, self.width // 2))
         self.nodes = 0
         self.evals = {}
+        self.clusters = {}
         self.turns = {}
         self.table = {}
         self.root = board
@@ -462,7 +488,7 @@ class _Search:
         self.nodes += 1
         key = state_key(board) if key is None else key
         if key not in self.evals:
-            self.evals[key] = evaluate(board)
+            self.evals[key] = evaluate(board, self.clusters)
         return self.evals[key]
 
     def fallback(self, board):
