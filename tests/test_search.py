@@ -26,6 +26,54 @@ def analyze(board, **options):
 
 
 class SearchTests(unittest.TestCase):
+    def replay_fixture(self, name, turns):
+        board = e.BaseBoard()
+        for line in (Path(__file__).parent / "fixtures" / name).read_text().splitlines()[:turns]:
+            board = self.assert_legal_line(board, line.split()[1:])
+        return board
+
+    def test_emergency_hq_escape_survives_narrow_root_pruning(self):
+        board = self.replay_fixture("hq-escape.pgn", 51)
+        for probe in (board, board.mirror()):
+            result = analyze(probe, time_ms=2400, max_depth=2, beam_width=4)
+            self.assertEqual(result["depth"], 2)
+            self.assertLess(abs(result["score"]), search.WIN)
+            expected = "a8b8" if probe.turn == e.BLUE else "h1g1"
+            self.assertIn(expected, result["turnMoves"])
+            after = self.assert_legal_line(probe, result["turnMoves"])
+            replies = search._Search(after, 2400, 8).plans(after, root=True)
+            self.assertTrue(all(search._terminal(p.board) is None for p in replies))
+
+    def test_timeout_keeps_comparable_completed_widening_results(self):
+        board = self.replay_fixture("artillery-timeout.pgn", 31)
+        original = search._Search.minimax
+        for stop_after in (0, 2):
+            completed = []
+            updates = []
+            def interrupt(runner, child, depth, *args):
+                if depth == 1 and runner.width == 8:
+                    if len(completed) == stop_after:
+                        raise search._Timeout()
+                    value = original(runner, child, depth, *args)
+                    completed.append((search.state_key(child), value[0]))
+                    return value
+                return original(runner, child, depth, *args)
+            with patch.object(search._Search, "minimax", interrupt):
+                result = analyze(board, time_ms=10000, max_depth=2,
+                                 on_update=lambda raw: updates.append(json.loads(raw)))
+            previous = updates[-1]
+            self.assertTrue(result["timedOut"])
+            if stop_after == 0:
+                self.assertEqual(result["turnMoves"], previous["turnMoves"])
+                self.assertFalse(result["partialIteration"])
+            else:
+                incumbent = self.assert_legal_line(board, previous["turnMoves"])
+                self.assertEqual(completed[0][0], search.state_key(incumbent))
+                self.assertTrue(result["partialIteration"])
+                self.assertAlmostEqual(result["score"], min(v for _, v in completed), places=4)
+                self.assertLess(result["score"], previous["score"])
+                self.assert_legal_line(board, result["lines"][0]["moves"])
+
     def test_capture_setups_find_reported_recapture_with_old_values(self):
         board = e.BaseBoard()
         turns = (Path(__file__).parent / "fixtures" / "paratrooper-recapture.pgn").read_text().splitlines()

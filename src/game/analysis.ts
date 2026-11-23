@@ -26,6 +26,8 @@ export interface AnalysisResult {
   selective: true;
   terminal: { winner: "RED" | "BLUE" | null; reason: string } | null;
   timedOut: boolean;
+  /** Some root candidates were unfinished; returned lines are fully evaluated. */
+  partialIteration?: boolean;
 }
 
 interface PendingAnalysis {

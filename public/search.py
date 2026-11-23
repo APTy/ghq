@@ -19,7 +19,7 @@ from engine import (
     scan_forward, between, between_inclusive_end,
 )
 
-ENGINE_VERSION = "ghq-cpu-6"
+ENGINE_VERSION = "ghq-cpu-7"
 WIN = 10000.0
 popcount = int.bit_count
 VALUES = {HQ: 0.0, INFANTRY: 1.0, ARMORED_INFANTRY: 2.0,
@@ -553,6 +553,29 @@ class _Search:
             moves.append(move.uci())
         return _Plan(board, tuple(moves), evaluate(board))
 
+    def hq_escapes(self, board):
+        """Try at most three HQ relocations when every root plan loses.
+
+        Finish each turn with the existing narrow beam. This is an emergency
+        escape search, not an exhaustive search of defensive preparations.
+        """
+        candidates = []
+        for move in board.generate_legal_moves(from_mask=board.hq):
+            self.check()
+            if move.name != "Move" or not BB_SQUARES[move.from_square] & board.hq:
+                continue
+            child = _copy(board)
+            child.push(move)
+            candidates.append(_Plan(child, (move.uci(),), self.score(child)))
+        sign = 1 if board.turn == RED else -1
+        candidates.sort(key=lambda plan: (-sign * plan.score, plan.moves))
+        for candidate in candidates[:3]:
+            if candidate.board.turn != board.turn or _terminal(candidate.board):
+                yield candidate
+            else:
+                continuation = self.plans(candidate.board)[0]
+                yield _Plan(continuation.board, candidate.moves + continuation.moves, continuation.score)
+
     def capture_setups(self, board):
         """Prove short infantry capture sequences before pruning their setups.
 
@@ -758,8 +781,10 @@ def analyze_json(serialized, time_ms=1200, max_depth=3, beam_width=8,
     An initial narrow pass prioritizes reaching the opponent's reply; widening
     can publish a second result at the same depth before searching deeper.
     timedOut means the requested next iteration exceeded the time budget. The
-    returned depth and lines always belong to a completed iteration (depth 0
-    denotes an emergency, still legal plan). No win probability is implied.
+    returned lines have fully evaluated replies at the reported depth. On a
+    timeout, a partial iteration may replace the previous result only after
+    rechecking its incumbent, so scores from different passes are never mixed.
+    Depth 0 denotes an emergency, still legal plan. No win probability is implied.
     """
     board = BaseBoard.deserialize(serialized)
     search = _Search(board, float(time_ms), beam_width)
@@ -768,6 +793,8 @@ def analyze_json(serialized, time_ms=1200, max_depth=3, beam_width=8,
     lines = [{"moves": list(fallback.moves), "turnMoves": list(fallback.moves), "score": fallback.score}]
     depth = 0
     timed_out = False
+    partial_iteration = False
+    completed = []
     count = max(1, min(10, int(multi_pv)))
 
     def result():
@@ -782,6 +809,7 @@ def analyze_json(serialized, time_ms=1200, max_depth=3, beam_width=8,
             "depth": depth, "nodes": search.nodes,
             "elapsedMs": round((time.perf_counter() - search.started) * 1000, 1),
             "selective": True, "terminal": terminal, "timedOut": timed_out,
+            "partialIteration": partial_iteration,
         })
 
     if terminal:
@@ -798,17 +826,35 @@ def analyze_json(serialized, time_ms=1200, max_depth=3, beam_width=8,
                 iterations.append((2, requested_width))
         iterations.extend((target_depth, requested_width) for target_depth in range(3, requested_depth + 1))
         previous_scores = {}
+        incumbent = None
         for target_depth, width in iterations:
+            completed = []
             search.width = width
             search.inner_width = max(2, min(4, width // 2))
             root_plans = search.plans(board, root=True)
-            completed = []
             sign = 1 if board.turn == RED else -1
             root_plans.sort(key=lambda plan: -sign * previous_scores.get(plan.moves, plan.score))
+            # Recheck the incumbent under this pass's depth/width first. Keep
+            # it even if wider root pruning omitted it. Only fully evaluated
+            # candidates can then replace it on timeout.
+            if incumbent is not None:
+                root_plans = [incumbent] + [p for p in root_plans if p.moves != incumbent.moves]
+            evaluated_plans = {}
             for plan in root_plans:
                 value, continuation = search.minimax(plan.board, target_depth - 1)
+                evaluated_plans[plan.moves] = plan
                 completed.append({"moves": list(plan.moves + continuation),
                                   "turnMoves": list(plan.moves), "score": round(value, 4)})
+            if target_depth >= 2 and all(sign * line["score"] == -WIN for line in completed):
+                for plan in search.hq_escapes(board):
+                    if plan.moves in evaluated_plans:
+                        continue
+                    value, continuation = search.minimax(plan.board, target_depth - 1)
+                    evaluated_plans[plan.moves] = plan
+                    completed.append({"moves": list(plan.moves + continuation),
+                                      "turnMoves": list(plan.moves), "score": round(value, 4)})
+                    if sign * value > -WIN:
+                        break
             completed.sort(key=lambda line: (-sign * line["score"], line["turnMoves"]))
             # Prefer distinct first actions for a useful alternatives panel.
             distinct, duplicate, seen = [], [], set()
@@ -817,6 +863,7 @@ def analyze_json(serialized, time_ms=1200, max_depth=3, beam_width=8,
                 (duplicate if first in seen else distinct).append(line)
                 seen.add(first)
             lines = distinct + duplicate
+            incumbent = evaluated_plans[tuple(lines[0]["turnMoves"])]
             previous_scores = {tuple(line["turnMoves"]): line["score"] for line in completed}
             depth = target_depth
             if callable(on_update):
@@ -825,7 +872,11 @@ def analyze_json(serialized, time_ms=1200, max_depth=3, beam_width=8,
                 break
     except _Timeout:
         timed_out = True
-        if depth == 0 and search.root_completed:
+        if completed:
+            lines = sorted(completed, key=lambda line: (-sign * line["score"], line["turnMoves"]))
+            depth = target_depth
+            partial_iteration = True
+        elif depth == 0 and search.root_completed:
             best = _select(search.root_completed, count, board.turn, final=True)
             lines = [{"moves": list(plan.moves), "turnMoves": list(plan.moves),
                       "score": round(plan.score, 4)} for plan in best]
