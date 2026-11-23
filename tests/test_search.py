@@ -5,6 +5,7 @@ from pathlib import Path
 import random
 import sys
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "public"))
 import engine as e
@@ -25,6 +26,51 @@ def analyze(board, **options):
 
 
 class SearchTests(unittest.TestCase):
+    def test_capture_setups_find_reported_recapture_with_old_values(self):
+        board = e.BaseBoard()
+        turns = (Path(__file__).parent / "fixtures" / "paratrooper-recapture.pgn").read_text().splitlines()
+        for turn in turns[:20]:
+            before_drop = board.copy()
+            board = self.assert_legal_line(board, turn.split()[1:])
+        with patch.dict(search.VALUES, {e.AIRBORNE_INFANTRY: 4.0}), \
+                patch.object(search, "AIRBORNE_HOME_BONUS", 0.0), \
+                patch.object(search, "AIRBORNE_POSITION_SCALE", 1.0):
+            for probe in (board, board.mirror()):
+                before = probe.serialize()
+                runner = search._Search(probe, 2400, 4)
+                paths = runner.capture_setups(probe)
+                victim = e.A1 if probe.turn == e.RED else e.H8
+                captures = [path for path in paths if e.Move.from_uci(path[-1]).capture_preference == victim]
+                self.assertTrue(captures)
+                for path in paths:
+                    self.assert_legal_line(probe, path)
+                if probe.turn == e.RED:
+                    self.assertIn(("rib1", "b3a2xa1"), captures)
+                # Even the narrow opponent beam must retain a completed reply
+                # that captures the jumper, not merely discover a setup.
+                plans = runner.plans(probe)
+                self.assertTrue(any(not plan.board.occupied_co[not probe.turn] & e.BB_SQUARES[victim]
+                                    for plan in plans))
+                self.assertEqual(before, probe.serialize())
+            result = analyze(before_drop, time_ms=2400, max_depth=2)
+            self.assertEqual(result["depth"], 2)
+            after_reply = self.assert_legal_line(before_drop, result["lines"][0]["moves"])
+            if "c8a1xa2" in result["turnMoves"]:
+                # Choosing the trade is allowed; assuming the jumper survives
+                # Red's reply is the tactical regression being tested.
+                self.assertFalse(after_reply.airborne_infantry & after_reply.occupied_co[e.BLUE] & e.BB_SQUARES[e.A1])
+
+    def test_capture_setups_can_coordinate_three_actions(self):
+        board = position({"a1": "Q", "h8": "q", "d4": "i", "e5": "i", "c5": "i",
+                          "d5": "I", "c3": "I", "e3": "I", "b1": "P"})
+        for probe in (board, board.mirror()):
+            paths = search._Search(probe, 2400, 4).capture_setups(probe)
+            victim = e.D4 if probe.turn == e.RED else 63 - e.D4
+            self.assertTrue(any(len(path) == 3 and e.Move.from_uci(path[-1]).capture_preference == victim
+                                for path in paths))
+            for path in paths:
+                self.assert_legal_line(probe, path)
+
     def test_topology_cache_preserves_scores_across_legal_successors(self):
         board = e.BaseBoard()
         rng = random.Random(4173)

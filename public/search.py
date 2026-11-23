@@ -19,7 +19,7 @@ from engine import (
     scan_forward, between, between_inclusive_end,
 )
 
-ENGINE_VERSION = "ghq-cpu-5"
+ENGINE_VERSION = "ghq-cpu-6"
 WIN = 10000.0
 popcount = int.bit_count
 VALUES = {HQ: 0.0, INFANTRY: 1.0, ARMORED_INFANTRY: 2.0,
@@ -510,6 +510,7 @@ class _Search:
         self.evals = {}
         self.clusters = {}
         self.turns = {}
+        self.tactics = {}
         self.table = {}
         self.root = board
         self.root_completed = []
@@ -552,6 +553,62 @@ class _Search:
             moves.append(move.uci())
         return _Plan(board, tuple(moves), evaluate(board))
 
+    def capture_setups(self, board):
+        """Prove short infantry capture sequences before pruning their setups.
+
+        Only landings adjacent to the victim are considered. This deliberately
+        misses remote cluster support and artillery preparations, but avoids
+        widening the full move tree. Two prefixes per victim and 96 pushed
+        positions per call bound the work; the ordinary deadline still applies.
+        Returned paths use authoritative legal moves, never geometric guesses.
+        """
+        color = board.turn
+        infantry = board.infantry | board.armored_infantry | board.airborne_infantry
+        targets = sorted(scan_forward(board.occupied_co[not color]),
+                         key=lambda sq: (- (WIN if board.piece_type_at(sq) == HQ
+                                            else VALUES[board.piece_type_at(sq)]), sq))
+        paths = []
+        remaining = 96
+        for target in targets:
+            frontier = [(board, ())]
+            found = []
+            for _ in range(3 - board.turn_moves):
+                expanded = {}
+                for state, prefix in frontier:
+                    self.check()
+                    legal = state.generate_legal_moves(from_mask=infantry & ~BB_ADJACENT_SQUARES[target],
+                                                       to_mask=BB_ADJACENT_SQUARES[target])
+                    for move in legal:
+                        self.check()
+                        # Automatic captures are handled by the main search.
+                        if move.name not in ("Move", "Reinforce"):
+                            continue
+                        if move.name == "Reinforce" and move.unit_type not in (
+                                INFANTRY, ARMORED_INFANTRY, AIRBORNE_INFANTRY):
+                            continue
+                        if remaining == 0:
+                            return paths + found
+                        remaining -= 1
+                        child = _copy(state)
+                        child.push(move)
+                        moves = prefix + (move.uci(),)
+                        if move.capture_preference == target:
+                            if len(moves) > 1:
+                                found.append(moves)
+                            continue
+                        if child.turn == color and not _terminal(child):
+                            key = state_key(child)
+                            if key not in expanded:
+                                expanded[key] = (child, moves)
+                if found:
+                    break
+                frontier = sorted(expanded.values(),
+                                  key=lambda item: ((-1 if color == RED else 1) * self.score(item[0]), item[1]))[:2]
+                if not frontier:
+                    break
+            paths.extend(found)
+        return paths
+
     def plans(self, board, root=False):
         self.check()
         width = self.width if root else self.inner_width
@@ -559,6 +616,10 @@ class _Search:
         if key in self.turns:
             return self.turns[key]
         color = board.turn
+        tactical_key = state_key(board)
+        if tactical_key not in self.tactics:
+            self.tactics[tactical_key] = self.capture_setups(board)
+        tactical_paths = self.tactics[tactical_key]
         frontier = [_Plan(board, (), self.score(board))]
         finished = {}
         # Automatic captures use no action. The occupied-piece bound protects
@@ -610,6 +671,14 @@ class _Search:
             if not expanded:
                 break
             frontier = _select(list(expanded.values()), width, color)
+            # Up to two proven capture preparations survive even when their
+            # immediate static scores fall below the ordinary beam cutoff.
+            selected = {plan.moves for plan in frontier}
+            preparations = [plan for plan in expanded.values()
+                            if plan.moves not in selected and any(
+                                len(plan.moves) < len(path) and path[:len(plan.moves)] == plan.moves
+                                for path in tactical_paths)]
+            frontier.extend(_select(preparations, 2, color)[:2])
         result = _select(list(finished.values()), width, color, final=True)
         if not result:
             result = [self.fallback(board)]
