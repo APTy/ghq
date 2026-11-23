@@ -90,3 +90,14 @@ and `--beam-width` for larger searches. A search timeout invalidates the run;
 `--max-turns` exhaustion is explicitly unfinished. The rules replay measures
 legal-action enumeration, execution, and outcome checks across the same game,
 without search. See [the measured bottleneck report](docs/python-selfplay-profile.md).
+
+For lower-overhead CPU stack sampling on POSIX systems, alternating three
+normal and three sampled games with identical search work:
+
+```sh
+python3 -B scripts/sample_selfplay.py --output .data/profiles/selfplay-sampled
+```
+
+This records CPU samples in mutually exclusive categories as well as inclusive
+function counts. Sampling percentages estimate CPU distribution; normal runs
+provide wall-clock throughput. The output directory must be new.

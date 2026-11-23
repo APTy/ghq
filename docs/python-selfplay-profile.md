@@ -4,6 +4,73 @@ Measured November 23, 2026 on macOS 15.7.4 arm64, CPython 3.13.1.
 This profiles `public/search.py` playing both colors using `public/engine.py`.
 It does not measure neural MCTS, GPU collection, or browser/Pyodide throughput.
 
+## Latest CPU-sampled full-game benchmark
+
+To reduce cProfile's distortion, the latest benchmark alternates three normal
+complete games with three games sampled using POSIX `ITIMER_PROF`/`SIGPROF`.
+The requested interval is 1 ms of process CPU time. It records Python stacks
+at interpreter checkpoints, so long native calls and delayed signal delivery
+can bias attribution; the percentages are estimates rather than exact timers.
+
+```sh
+.venv-neural/bin/python -B scripts/sample_selfplay.py \
+  --output .data/profiles/selfplay-cpu-sampling
+```
+
+All six games have identical states, moves, depths, node counts and final result:
+104 turns, 315 actions, 165,748 score calls, Blue winning by HQ capture. Search
+remains fixed at depth 1 / beam 4, starting from the standard initial position.
+This is a reproducible native CPU workload, not a measurement of deeper timed
+browser search or neural training collection.
+
+Normal wall times: 8.080, 9.110, 8.041 s (mean **8.411 s**, median 8.080 s).
+Normal CPU times average **8.274 s**. Sampled games average 8.696 s CPU,
+approximately **5.1% instrumentation overhead** in this small comparison.
+Sampled wall times average 9.593 s, including a 10.594 s run that used only
+8.701 s CPU; host scheduling therefore affects wall time independently of engine
+work. Startup/imports are excluded.
+
+The 18,584 stack samples produce these **mutually exclusive** CPU categories:
+
+| Work | CPU share |
+| --- | ---: |
+| Evaluation: remaining scoring loops and helpers | 35.6% |
+| Evaluation: artillery capture threats | 10.6% |
+| Evaluation: mobility and movement-mask preparation | 7.2% |
+| Evaluation: fire reliability and overlap | 7.2% |
+| Evaluation: infantry topology | 3.1% |
+| Evaluation: capture allowances | 3.1% |
+| Applying candidate/game actions | 14.4% |
+| Search control, sorting, bookkeeping and other | 13.2% |
+| Search board copies | 2.8% |
+| Search state keys | 1.7% |
+| Legal move generation | 1.2% |
+
+Rounded percentages sum to approximately 100%. Evaluation totals **66.8%**,
+equivalent to roughly 5.5 s of the average uninstrumented game's CPU time if the
+sampled distribution transfers to it. Candidate application is roughly 1.2 s
+and search control/bookkeeping roughly 1.1 s under the same assumption.
+
+The broad scoring category includes per-piece positional/material/exposure
+arithmetic, reserve queries, coverage iteration, and their Python helpers.
+Across all categories, `scan_forward` is on the sampled stack **14.8%** of the
+time. This overlaps the table: it is evidence of repeated bitboard iteration,
+not an additional 14.8% cost. Artillery capture threats plus fire reliability
+account for 17.8% of total CPU and remain a substantial focused target. Copies
+and state keys together account for only 4.4%.
+
+The takeaway is that repeatedly evaluating candidate positions dominates this
+game. The fixed-work cProfile run counted 124,765 evaluations for its 315 played
+actions; the sampled games retain that exact search workload. Further work on
+per-piece loops, bitboard traversal and artillery threat/fire calculations has
+more room than optimizing game replay or serialization.
+
+The sampler and raw report are `scripts/sample_selfplay.py` and
+`.data/profiles/selfplay-cpu-sampling/report.json`; the latter includes source
+hashes, individual run timings, exclusive categories, leaf source lines and
+inclusive function counts. Source hashes match the mobility-optimized engine.
+No production engine changes were made for this benchmark.
+
 ## Mobility optimization retest
 
 The next change implements only mobility work reduction and shared movement
