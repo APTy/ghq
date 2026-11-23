@@ -4,6 +4,53 @@ Measured November 23, 2026 on macOS 15.7.4 arm64, CPython 3.13.1.
 This profiles `public/search.py` playing both colors using `public/engine.py`.
 It does not measure neural MCTS, GPU collection, or browser/Pyodide throughput.
 
+## Mobility optimization retest
+
+The next change implements only mobility work reduction and shared movement
+masks. Each evaluation prepares two sets of masks (one per color), skips exit
+calculation for artillery that is neither advanced nor bombarded, and reuses
+piece exits when evaluating capture risk. If a skipped battery subsequently
+needs an escape check, its exits are computed on demand. A zero exit mask is
+cached distinctly from an uncomputed value. Masks and exits never survive an
+evaluation or board mutation. Artillery-threat generation and reserve handling
+are unchanged.
+
+Four alternating evaluation passes per variant over the same 29,130 recorded
+successor positions, including color mirrors, gave:
+
+| Variant | Mean process CPU | Mean wall time |
+| --- | ---: | ---: |
+| Before mobility changes | 1.2613 s | 1.2692 s |
+| After mobility changes | 1.1804 s | 1.1818 s |
+
+This is **6.4% less evaluator CPU time** on that position batch. All scores match
+exactly. These passes exclude position construction, search, and rule execution;
+each pass starts with a fresh topology cache.
+
+The complete-game comparison also preserved all states, moves, depths, node
+counts, and the final outcome. Before times were 9.413/9.803 s and after times
+were 8.831/9.962 s: means of 9.608 s and 9.397 s, or 2.2% less wall time. The
+ranges overlap, and another optimized run took 10.635 s, so these measurements
+do **not** establish a reliable end-to-end percentage improvement.
+
+In the full-game profile, `_safe_destinations` calls fell from 2,438,043 to
+1,699,359 (30.3% fewer). Shared masks were constructed 249,504 times, twice per
+nonterminal evaluation. Mobility plus mask preparation accounts for 6.6% of the
+new profile, versus 10.2% for mobility previously. Profiled wall time fell from
+26.711 s to 19.898 s, but profiler overhead and host variability make that an
+unsuitable production speedup estimate.
+
+The differential check again matched legal action sets, serialized successor
+states, and scores across 29,130 positions. The movement regression now also
+compares the shared-mask path directly with authoritative legal destinations.
+Full Python suite: **342 passed, 236 subtests passed** in 38.90 s, with the
+existing `TestCase` collection warning. `git diff --check` is clean.
+
+Artifacts under `.data/profiles/`: `selfplay-mobility/`,
+`mobility-comparison.json`, `mobility-equivalence.json`, and
+`mobility-evaluation-comparison.json`. Drivers are `compare_mobility.py` and
+`benchmark_mobility_evaluation.py`; the prior modules are in `before-mobility/`.
+
 ## Optimization retest
 
 Implemented all four targeted changes in `public/engine.py` and `public/search.py`:

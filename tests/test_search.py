@@ -83,10 +83,13 @@ class SearchTests(unittest.TestCase):
                 probe.turn_moves = 1
                 probe.turn_pieces = 0
                 legal = list(probe.generate_legal_moves())
+                mobility = search._mobility_masks(probe, color)
                 for square in e.scan_forward(probe.occupied_co[color]):
                     destinations = {move.to_square for move in legal
                                     if move.from_square == square and move.to_square != square}
                     self.assertEqual(destinations, set(e.scan_forward(search._safe_destinations(probe, square, color))))
+                    self.assertEqual(destinations, set(e.scan_forward(
+                        search._safe_destinations(probe, square, color, mobility))))
             board.push(rng.choice(list(board.generate_legal_moves())))
 
     def test_reserves_are_material_before_deployment(self):

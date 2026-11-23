@@ -91,21 +91,36 @@ def _credible_fire(board, capture_threats):
     return reliable, lines, overlap
 
 
-def _safe_destinations(board, square, color):
-    """Movement geometry without move generation or changing board.turn."""
-    bit = BB_SQUARES[square]
-    infantry = bool(bit & (board.infantry | board.armored_infantry | board.airborne_infantry))
-    engaged = infantry and bool(bit & board.adjacent_infantry_squares_co[not color])
+def _mobility_masks(board, color, infantry=None):
+    """Shared geometry for one color in one immutable evaluation position."""
+    if infantry is None:
+        infantry = board.infantry | board.armored_infantry | board.airborne_infantry
     enemy_adjacent = board.adjacent_infantry_squares_co[not color]
-    empty = ~board.occupied & ~board.bombarded_co[not color] & BB_ALL
+    impassable = board.occupied | board.bombarded_co[not color]
     home = BB_RANK_1 if color == RED else BB_RANK_8
-    if bit & board.airborne_infantry and bit & home:
+    return (infantry & enemy_adjacent,
+            board.armored_infantry | board.armored_artillery,
+            board.airborne_infantry & home, enemy_adjacent,
+            ~impassable & BB_ALL, impassable, impassable | enemy_adjacent)
+
+
+def _safe_destinations(board, square, color, masks=None):
+    """Movement geometry without move generation or changing board.turn.
+
+    Optional masks belong to this exact board position and color; callers must
+    not reuse them after a move. Standalone callers compute them on demand.
+    """
+    if masks is None:
+        masks = _mobility_masks(board, color)
+    engaged_pieces, armored, paradrops, enemy_adjacent, empty, blocked, engaged_blocked = masks
+    bit = BB_SQUARES[square]
+    engaged = bool(bit & engaged_pieces)
+    if bit & paradrops:
         return empty & (~enemy_adjacent if engaged else BB_ALL)
     moves = BB_REGULAR_MOVES[square]
-    if bit & (board.armored_infantry | board.armored_artillery):
-        impassable = board.occupied | board.bombarded_co[not color]
+    if bit & armored:
+        impassable = engaged_blocked if engaged else blocked
         if engaged:
-            impassable |= enemy_adjacent
             moves &= ~enemy_adjacent
         for target in scan_forward(BB_ARMORED_MOVES[square] & ~BB_REGULAR_MOVES[square] & empty):
             if not between(square, target) & impassable:
@@ -230,6 +245,9 @@ def evaluate(board, cluster_cache=None):
     # Different tactical reasons can threaten the same unit. Track the largest
     # exposure per square rather than repeatedly subtracting its full value.
     exposure = [0.0] * 64
+    mobility = [_mobility_masks(board, color, infantry) for color in range(2)]
+    # None means not computed; a zero bitboard is a valid cached result.
+    piece_exits = [None] * 64
     capture_threats = [_artillery_capture_threats(board, color) for color in (RED, BLUE)]
     reliable_fire, fire_lines, overlapping_fire = _credible_fire(board, capture_threats)
     for color in (RED, BLUE):
@@ -238,7 +256,7 @@ def evaluate(board, cluster_cache=None):
         enemy_infantry = theirs & infantry
         danger = board.bombarded_co[not color]
         enemy_adjacent = board.adjacent_infantry_squares_co[not color]
-        empty_safe = ~board.occupied & ~danger & BB_ALL
+        empty_safe = mobility[color][4]
         artillery_threats = capture_threats[not color]
         enemy_reserve_infantry = sum(board.reserves[not color].get_count(kind)
                                     for kind in (INFANTRY, ARMORED_INFANTRY, AIRBORNE_INFANTRY))
@@ -255,8 +273,11 @@ def evaluate(board, cluster_cache=None):
                 bit = BB_SQUARES[square]
                 advance = ADVANCE[color][square]
                 score += value
-                exits = _safe_destinations(board, square, color)
-                exit_count = popcount(exits)
+                # Quiet artillery in its own half does not use its exit count.
+                if bit & infantry or advance >= 4 or bit & danger:
+                    exits = _safe_destinations(board, square, color, mobility[color])
+                    piece_exits[square] = exits
+                    exit_count = popcount(exits)
                 if bit & infantry:
                     # Nearby infantry can coordinate a capture during this turn.
                     score += INFANTRY_POSITION[color][square]
@@ -371,9 +392,13 @@ def evaluate(board, cluster_cache=None):
                     # A future free capture is not already won material: the
                     # defender may move this victim before the attacker's turn.
                     # Keep full weight for captures due now and locked victims.
-                    can_evade = (board.turn != attacker and
-                                 not BB_SQUARES[square] & board.turn_pieces and
-                                 bool(_safe_destinations(board, square, not attacker)))
+                    can_evade = False
+                    if board.turn != attacker and not BB_SQUARES[square] & board.turn_pieces:
+                        exits = piece_exits[square]
+                        if exits is None:
+                            exits = _safe_destinations(board, square, not attacker, mobility[not attacker])
+                            piece_exits[square] = exits
+                        can_evade = bool(exits)
                     exposure[square] = max(exposure[square], risk * (0.5 if can_evade else 1.0))
                 count -= allocation
                 if count <= 0:
