@@ -6,6 +6,8 @@ import type { GameClient } from "@/game/engine-v2";
 import type { Settings } from "./SettingsMenu";
 import type { UserActionState } from "./state";
 import { defaultBoard } from "@/game/engine";
+import type { AllowedMove, GameoverState } from "@/game/engine";
+import { allowedMoveFromUci } from "@/game/notation-uci";
 
 declare const jest: typeof import("@jest/globals").jest;
 jest.mock("@/game/audio", () => ({
@@ -26,6 +28,8 @@ function fakeGame(needsTurnConfirmation = false) {
     getV1Board: () => defaultBoard,
     getLastTurnBoards: () => [],
     getLastTurnMoves: () => [],
+    getThisTurnMoves: (): AllowedMove[] => [],
+    getGameover: (): GameoverState | undefined => undefined,
     currentPlayer: () => "RED",
     currentPlayerTurn: () => "RED",
     isMyTurn: () => true,
@@ -63,6 +67,37 @@ describe("automatic turn confirmation", () => {
     rerender();
     await act(async () => jest.advanceTimersByTime(1));
     expect(game.endTurn).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([false, true])("submits a terminal bombardment with confirmTurn=%s", async (confirmTurn) => {
+    const game = fakeGame();
+    let moves: AllowedMove[] = [];
+    game.getThisTurnMoves = () => moves;
+    game.clearBombardments = () => {
+      moves = [allowedMoveFromUci("sba8")];
+      return true;
+    };
+    game.getGameover = () => moves.length
+      ? { status: "WIN", winner: "RED", reason: "hq-capture" }
+      : undefined;
+    const { rerender } = renderHook(() => useBoard({
+      game: game as unknown as GameClient,
+      settings: { ...settings, confirmTurn },
+      userActionState,
+    }));
+    await act(async () => jest.advanceTimersByTime(10));
+    expect(game.endTurn).toHaveBeenCalledTimes(1);
+    rerender();
+    await act(async () => jest.advanceTimersByTime(10));
+    expect(game.endTurn).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not submit a nonterminal bombardment", async () => {
+    const game = fakeGame();
+    game.getThisTurnMoves = () => [allowedMoveFromUci("sba7")];
+    renderHook(() => useBoard({ game: game as unknown as GameClient, settings, userActionState }));
+    await act(async () => jest.advanceTimersByTime(10));
+    expect(game.endTurn).not.toHaveBeenCalled();
   });
 
   it("reports a failed worker request once and leaves manual retry available", async () => {

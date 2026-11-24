@@ -17,11 +17,18 @@ function fakeEngine(): GameEngine {
     return {
       serialize: () => JSON.stringify(state),
       is_red_turn: () => !state.blue,
+      generate_legal_moves: () => ["sba8", "sbc8"].map((uci) => ({
+        name: "AutoCapture", auto_capture_type: "bombard", uci: () => uci,
+      })),
       outcome: () =>
         state.winner
           ? { winner: state.winner === "BLUE", termination: "hq-capture" }
           : undefined,
       push: (move: { uci: () => string }) => {
+        if (move.uci() === "sba8") {
+          state.winner = "RED";
+          return;
+        }
         if (move.uci().includes("xb8")) state.winner = "RED";
         if (move.uci() === "skip" || ++state.count === 3) {
           state.blue = !state.blue;
@@ -37,6 +44,29 @@ function fakeEngine(): GameEngine {
 }
 
 describe("GameClient terminal history", () => {
+  it.each([true, false])("submits terminal bombardment without Skip (bot=%s)", async (bot) => {
+    const submitted: Turn[] = [];
+    const game = new GameClient({
+      engine: fakeEngine(), bot, playerId: "0",
+      multiplayer: {
+        initGame: async () => undefined,
+        onTurnPlayed: () => undefined,
+        sendTurn: async (turn) => { submitted.push({ ...turn, moves: [...turn.moves] }); },
+      },
+    });
+    expect(game.clearBombardments()).toBe(true);
+    expect(game.moves).toEqual([allowedMoveFromUci("sba8")]);
+    expect(game.clearBombardments()).toBe(false);
+    expect(game.needsTurnConfirmation).toBe(false);
+    expect(game.getGameover()?.winner).toBe("RED");
+    await game.endTurn();
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0].moves).toEqual([allowedMoveFromUci("sba8")]);
+    expect(game.getThisTurnMoves()).toEqual([]);
+    if (bot) expect(game.gameover?.winner).toBe("RED");
+    else expect(game.gameover).toBeUndefined(); // Live results arrive from the server.
+  });
+
   it.each([
     { status: "resign", winner: "BLUE", moves: [] },
     { status: "hq-capture", winner: "BLUE", moves: ["a8a7xb1"] },

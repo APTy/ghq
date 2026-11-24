@@ -160,13 +160,18 @@ export default function useBoard({
     }
   }, [game.turn]);
 
-  // Only confirm a completed turn automatically; never skip a fresh turn.
+  // Terminal bombardments must be submitted even with turn confirmation enabled.
+  // Otherwise only confirm completed turns; never skip a fresh turn.
   useEffect(() => {
+    const terminalBombardment =
+      game.getThisTurnMoves().some(
+        (move) => move.name === "AutoCapture" && move.args[0] === "bombard"
+      ) && !!game.getGameover();
     if (
       game.isReplayMode ||
       game.gameover ||
-      !game.needsTurnConfirmation ||
-      settings.confirmTurn ||
+      (!terminalBombardment &&
+        (!game.needsTurnConfirmation || settings.confirmTurn)) ||
       !game.canEndTurn()
     )
       return;
@@ -191,7 +196,7 @@ export default function useBoard({
       active = false;
       clearTimeout(timer);
     };
-  }, [game, game.needsTurnConfirmation, game.gameover, settings.confirmTurn]);
+  }, [game, game.moves, game.turn, game.needsTurnConfirmation, game.gameover, settings.confirmTurn]);
 
   return {
     animatedBoard,

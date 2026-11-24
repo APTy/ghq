@@ -978,12 +978,14 @@ export class GameClient {
   }
 
   clearBombardments(): boolean {
+    if (this.board().outcome()) return false;
     let cleared = false;
     const allowedMoves = this.board().generate_legal_moves();
     for (const move of allowedMoves) {
       if (move.name === "AutoCapture" && move.auto_capture_type === "bombard") {
         this._push(allowedMoveFromUci(move.uci()));
         cleared = true;
+        if (this.board().outcome()) break;
       }
     }
     return cleared;
