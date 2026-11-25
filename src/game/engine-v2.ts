@@ -530,6 +530,7 @@ export interface Turn {
 }
 
 export interface GameClientOptions {
+  initialTurns?: Turn[];
   engine?: GameEngine | null;
   multiplayer?: Multiplayer;
   playerId?: string;
@@ -588,10 +589,12 @@ export class GameClient {
   // Gameover state
   public gameover?: GameoverState;
   private shouldCheckGameoverOnEndTurn: boolean;
+  private initialFen?: string;
 
   constructor({
     engine,
     fen,
+    initialTurns,
     isTutorial,
     isReplayMode,
     isPassAndPlayMode,
@@ -607,6 +610,7 @@ export class GameClient {
       throw new Error("engine is required");
     }
     this.engine = engine;
+    this.initialFen = fen;
     this.multiplayer = multiplayer;
     const board = this.engine.BaseBoard(fen);
     this.boards = [board];
@@ -634,6 +638,14 @@ export class GameClient {
     this.isSendingTurn = false;
     this.shouldCheckGameoverOnEndTurn = bot ?? isPassAndPlayMode ?? false;
     this.isOnline = isOnline ?? false;
+    for (const turn of initialTurns ?? []) {
+      for (const move of turn.moves) this.push(move);
+      Object.assign(this.getTurn(), { elapsedSecs: turn.elapsedSecs, status: turn.status, winner: turn.winner });
+      if (turn.status) {
+        this.gameover = { status: turn.winner ? "WIN" : "DRAW", winner: turn.winner, reason: turn.status };
+      }
+      if (this.needsTurnConfirmation || turn.status) this.finishTurn();
+    }
     this.setupMultiplayer();
   }
 
@@ -1096,7 +1108,8 @@ export class GameClient {
   }
 
   reset() {
-    this.boards = [this.engine.BaseBoard()];
+    this.boards = [this.engine.BaseBoard(this.initialFen)];
+    this.gameover = undefined;
     this.currentBoardIndex = 0;
     this.turn = 1;
     this.moves = [];

@@ -175,3 +175,37 @@ describe("GameClient terminal history", () => {
     });
   });
 });
+
+describe("analysis initialization", () => {
+  it("retains a partial imported turn and supports seeking through it", () => {
+    const pgn = "1. a1a2 {[%emt 2.0]}";
+    const game = new GameClient({ engine: fakeEngine(), isPassAndPlayMode: true, initialTurns: pgnToTurns(pgn) });
+    expect(game.turn).toBe(1);
+    expect(game.moves).toHaveLength(1);
+    expect(game.pgn()).toBe(pgn);
+    game.applyMoves(pgn, 0);
+    expect(game.moves).toHaveLength(0);
+    game.applyMoves(pgn, 1);
+    expect(game.moves).toHaveLength(1);
+  });
+
+  it("retains completed turns and terminal results", () => {
+    const pgn = "1. skip {[%emt 1.0]}\n0-1 {[%sts resign]}";
+    const game = new GameClient({ engine: fakeEngine(), initialTurns: pgnToTurns(pgn) });
+    expect(game.pgn()).toBe(pgn);
+    expect(game.gameover).toMatchObject({ winner: "BLUE", reason: "resign" });
+    game.reset();
+    expect(game.gameover).toBeUndefined();
+    expect(game.moves).toHaveLength(0);
+  });
+
+  it("seeks from the imported FEN", () => {
+    const engine = fakeEngine();
+    const original = engine.BaseBoard;
+    const base = jest.fn(original);
+    engine.BaseBoard = Object.assign(base, { deserialize: original.deserialize });
+    const game = new GameClient({ engine, fen: "custom-position" });
+    game.applyMoves("", 0);
+    expect(base).toHaveBeenLastCalledWith("custom-position");
+  });
+});

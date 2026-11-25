@@ -9,9 +9,12 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuLabel,
+  DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import LoadPositionDialog from "./LoadPositionDialog";
+import type { ImportFormat } from "@/game/analysis-import";
 import { Ellipsis } from "lucide-react";
 
 export interface Settings {
@@ -25,47 +28,71 @@ type Checked = DropdownMenuCheckboxItemProps["checked"];
 export default function SettingsMenu({
   settings,
   setSettings,
+  onLoad,
 }: {
+  onLoad?: (format: ImportFormat, text: string) => void;
   settings: Settings;
   setSettings: (settings: Settings) => void;
 }) {
+  const [format, setFormat] = React.useState<ImportFormat | null>(null);
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="outline">
-          <Ellipsis />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-56">
-        <DropdownMenuLabel>Pass and Play</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuCheckboxItem
-          checked={settings.autoFlipBoard}
-          onCheckedChange={(checked) =>
-            setSettings({ ...settings, autoFlipBoard: !!checked })
-          }
-        >
-          Automatic board flip
-        </DropdownMenuCheckboxItem>
-        <DropdownMenuLabel>Game</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuCheckboxItem
-          checked={settings.confirmTurn}
-          onCheckedChange={(checked) =>
-            setSettings({ ...settings, confirmTurn: !!checked })
-          }
-        >
-          Confirm turn
-        </DropdownMenuCheckboxItem>
-        <DropdownMenuCheckboxItem
-          checked={settings.undoWithMouse}
-          onCheckedChange={(checked) =>
-            setSettings({ ...settings, undoWithMouse: !!checked })
-          }
-        >
-          Mouse 4/5 for undo/redo
-        </DropdownMenuCheckboxItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline">
+            <Ellipsis />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="w-56">
+          <DropdownMenuLabel>Pass and Play</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuCheckboxItem
+            checked={settings.autoFlipBoard}
+            onCheckedChange={(checked) =>
+              setSettings({ ...settings, autoFlipBoard: !!checked })
+            }
+          >
+            Automatic board flip
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuLabel>Game</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuCheckboxItem
+            checked={settings.confirmTurn}
+            onCheckedChange={(checked) =>
+              setSettings({ ...settings, confirmTurn: !!checked })
+            }
+          >
+            Confirm turn
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={settings.undoWithMouse}
+            onCheckedChange={(checked) =>
+              setSettings({ ...settings, undoWithMouse: !!checked })
+            }
+          >
+            Mouse 4/5 for undo/redo
+          </DropdownMenuCheckboxItem>
+          {onLoad && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => setFormat("PGN")}>
+                Load from PGN
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setFormat("FEN")}>
+                Load from FEN
+              </DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {format && onLoad && (
+        <LoadPositionDialog
+          key={format}
+          format={format}
+          onLoad={onLoad}
+          onClose={() => setFormat(null)}
+        />
+      )}
+    </>
   );
 }

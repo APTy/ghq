@@ -1,5 +1,6 @@
 "use client";
 
+import { ImportFormat } from "@/game/analysis-import";
 import React, { useMemo } from "react";
 import classNames from "classnames";
 import { HistoryLog } from "./HistoryLog";
@@ -28,6 +29,7 @@ export default function Sidebar({
   settings,
   setSettings,
   isLearning = false,
+  onLoad,
 }: {
   // this is the realGame
   game: GameClient;
@@ -40,6 +42,7 @@ export default function Sidebar({
   settings: Settings;
   setSettings: (settings: Settings) => void;
   isLearning?: boolean;
+  onLoad?: (format: ImportFormat, text: string) => void;
 }) {
   const currentPlayerTurn = useMemo(
     () => game.currentPlayerTurn(),
@@ -98,6 +101,7 @@ export default function Sidebar({
             <PlayLocalIconButton game={activeGame} />
             <ShareGameDialog game={activeGame} />
             <HomeButton />
+            {onLoad && <SettingsMenu onLoad={onLoad} settings={settings} setSettings={setSettings} />}
           </div>
         </div>
       ) : (
@@ -131,7 +135,7 @@ export default function Sidebar({
                 )} */}
                 <ResignButton resign={() => game.resign()} />
                 <ShareGameDialog game={game} />
-                <SettingsMenu settings={settings} setSettings={setSettings} />
+                <SettingsMenu onLoad={onLoad} settings={settings} setSettings={setSettings} />
               </>
             ) : (
               <>
@@ -139,7 +143,7 @@ export default function Sidebar({
                   <AbandonButton matchId={game.id} />
                 )}
                 <ShareGameDialog game={game} />
-                <SettingsMenu settings={settings} setSettings={setSettings} />
+                <SettingsMenu onLoad={onLoad} settings={settings} setSettings={setSettings} />
               </>
             )}
           </div>

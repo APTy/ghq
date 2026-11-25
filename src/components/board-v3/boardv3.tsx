@@ -5,7 +5,12 @@ import Sidebar from "./Sidebar";
 import GameoverDialog from "./GameoverDialog";
 import { useEffect, useMemo, useRef, useState } from "react";
 import MobileHeader from "../MobileHeader";
-import { GameClient, GameClientOptions, useEngine } from "@/game/engine-v2";
+import {
+  GameClient,
+  GameClientOptions,
+  GameEngine,
+  useEngine,
+} from "@/game/engine-v2";
 import { useGameClient } from "./useGameClient";
 import useSeek from "./useSeek";
 import { useSettings } from "./useSettings";
@@ -20,6 +25,8 @@ import GameLoader from "./GameLoader";
 import { MatchV3 } from "@/lib/types";
 import { useUsers } from "./useUsers";
 import { GameoverReason, GameoverState } from "@/game/engine";
+import { prepareAnalysisImport, ImportFormat } from "@/game/analysis-import";
+import { useBoardArrow } from "@/game/BoardArrowProvider";
 import { config } from "@/lib/config";
 
 export interface GHQBoardV3Props extends GameClientOptions {
@@ -30,7 +37,11 @@ export interface GHQBoardV3Props extends GameClientOptions {
 }
 
 export function GHQBoardV3(opts: GHQBoardV3Props) {
-  return config.useClerk ? <AuthenticatedBoard opts={opts} /> : <BoardContent opts={opts} auth={localAuth} />;
+  return config.useClerk ? (
+    <AuthenticatedBoard opts={opts} />
+  ) : (
+    <BoardContent opts={opts} auth={localAuth} />
+  );
 }
 
 const localAuth = { isSignedIn: false, getToken: async () => null };
@@ -40,11 +51,56 @@ function AuthenticatedBoard({ opts }: { opts: GHQBoardV3Props }) {
   return <BoardContent opts={opts} auth={auth} />;
 }
 
-function BoardContent({ opts, auth }: {
+function BoardContent({
+  opts,
+  auth,
+}: {
   opts: GHQBoardV3Props;
   auth: { isSignedIn?: boolean; getToken: () => Promise<string | null> };
 }) {
+  const [loaded, setLoaded] =
+    useState<Pick<GameClientOptions, "fen" | "initialTurns">>();
+  const [revision, setRevision] = useState(0);
   const { engine } = useEngine();
+  const { setBoardArrows } = useBoardArrow();
+  const canImport =
+    opts.isPassAndPlayMode &&
+    !opts.bot &&
+    !opts.isOnline &&
+    !opts.isTutorial &&
+    !opts.match &&
+    !opts.credentials;
+  function load(format: ImportFormat, text: string) {
+    if (!engine) throw new Error("The engine is still loading.");
+    const next = prepareAnalysisImport(engine, format, text);
+    // Construct before committing so replay failures leave the current board intact.
+    new GameClient({ ...opts, ...next, engine });
+    setLoaded(next);
+    setRevision((value) => value + 1);
+    setBoardArrows([]);
+  }
+  return (
+    <BoardSession
+      key={revision}
+      engine={engine}
+      opts={{ ...opts, ...loaded }}
+      auth={auth}
+      onLoad={canImport ? load : undefined}
+    />
+  );
+}
+
+function BoardSession({
+  opts,
+  auth,
+  onLoad,
+  engine,
+}: {
+  opts: GHQBoardV3Props;
+  auth: { isSignedIn?: boolean; getToken: () => Promise<string | null> };
+  onLoad?: (format: ImportFormat, text: string) => void;
+  engine: GameEngine | null;
+}) {
   const { isSignedIn, getToken } = auth;
   const [multiplayer, setMultiplayer] = useState<Multiplayer | undefined>(
     undefined
@@ -138,6 +194,7 @@ function BoardContent({ opts, auth }: {
           settings={settings}
           setSettings={setSettings}
           isLearning={opts.isLearning}
+          onLoad={onLoad}
         />
       )}
       <PlayArea
