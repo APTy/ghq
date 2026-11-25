@@ -19,7 +19,7 @@ from engine import (
     scan_forward, between, between_inclusive_end,
 )
 
-ENGINE_VERSION = "ghq-cpu-7"
+ENGINE_VERSION = "ghq-cpu-8"
 WIN = 10000.0
 popcount = int.bit_count
 VALUES = {HQ: 0.0, INFANTRY: 1.0, ARMORED_INFANTRY: 2.0,
@@ -27,6 +27,11 @@ VALUES = {HQ: 0.0, INFANTRY: 1.0, ARMORED_INFANTRY: 2.0,
           ARMORED_ARTILLERY: 4.0, HEAVY_ARTILLERY: 5.0}
 AIRBORNE_HOME_BONUS = 0.5
 AIRBORNE_POSITION_SCALE = 0.25
+INFANTRY_ADVANCE_WEIGHT = 0.035
+# Keep coordinated infantry useful without making a packed home rank worth
+# more than developing the units already on the board.
+INFANTRY_SUPPORT_WEIGHT = 0.035
+INFANTRY_MOBILITY_WEIGHT = 0.009
 RADIUS_TWO = [sum(BB_SQUARES[target] for target in range(64)
                   if max(abs(square % 8 - target % 8), abs(square // 8 - target // 8)) <= 2)
               for square in range(64)]
@@ -39,7 +44,7 @@ RADIUS_THREE = [sum(BB_SQUARES[target] for target in range(64)
 # tables preserve exact scores (including floating-point tie breaking).
 ADVANCE = [[square // 8 if color == RED else 7 - square // 8
             for square in range(64)] for color in range(2)]
-INFANTRY_POSITION = [[0.035 * ADVANCE[color][square] + 0.025 * (3.5 - abs(3.5 - square % 8))
+INFANTRY_POSITION = [[INFANTRY_ADVANCE_WEIGHT * ADVANCE[color][square] + 0.025 * (3.5 - abs(3.5 - square % 8))
                       for square in range(64)] for color in range(2)]
 ARTILLERY_POSITION = [[0.06 * ADVANCE[color][square] + 0.02 * (3.5 - abs(3.5 - square % 8))
                        for square in range(64)] for color in range(2)]
@@ -290,9 +295,9 @@ def evaluate(board, cluster_cache=None):
                             score += AIRBORNE_HOME_BONUS
                     else:
                         score += INFANTRY_POSITION[color][square]
-                    score += 0.045 * popcount(BB_REGULAR_MOVES[square] & friendly_infantry)
+                    score += INFANTRY_SUPPORT_WEIGHT * popcount(BB_REGULAR_MOVES[square] & friendly_infantry)
                     score += HQ_APPROACH[square][enemy_hq]
-                    score += 0.009 * min(12, exit_count)
+                    score += INFANTRY_MOBILITY_WEIGHT * min(12, exit_count)
                     if bit & enemy_adjacent:
                         score -= 0.07
                 else:
