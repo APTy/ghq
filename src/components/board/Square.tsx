@@ -280,7 +280,7 @@ function getRotationForPiece(
 function SquareBackground({ squareState }: { squareState: SquareState }) {
   let baseBackground =
     (squareState.rowIndex + squareState.colIndex) % 2 === 0
-      ? "bg-slate-400/70"
+      ? "bg-slate-400"
       : "bg-slate-200";
 
   if (squareState.isRedBombarded && squareState.isBlueBombarded) {

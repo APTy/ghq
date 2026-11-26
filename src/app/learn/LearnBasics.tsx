@@ -31,7 +31,7 @@ function HowToWinCard() {
       </CardHeader>
       <CardContent>
         <div className="flex flex-col justify-center items-center gap-8">
-          <div className="font-bold text-blue-600 text-center">
+          <div className="font-bold text-blue-600 dark:text-blue-400 text-center">
             Capture the enemy HQ
             <br />
             to win!
@@ -40,7 +40,7 @@ function HowToWinCard() {
             <Image src="/hq-red.png" alt="hq" width={64} height={64} />
             <Image src="/hq-blue.png" alt="hq" width={64} height={64} />
           </div>
-          <div className="text-sm text-gray-800">
+          <div className="text-sm text-card-foreground">
             Use <strong>artillery</strong> and <strong>infantry</strong> to
             defend your HQ and destroy the enemy&apos;s HQ!
           </div>
@@ -61,7 +61,7 @@ function HowToPlayCard() {
           <div className="font-bold">
             You get <strong>3</strong> moves per turn.
           </div>
-          <div className="text-gray-800">
+          <div className="text-card-foreground">
             <div className="mb-2">Choose any of:</div>
             <div className="text-sm">
               <div>(A) Deploy a piece from your reserve</div>
@@ -72,7 +72,7 @@ function HowToPlayCard() {
               </div>
             </div>
           </div>
-          <div className="text-sm text-gray-800 mt-4">
+          <div className="text-sm text-card-foreground mt-4">
             <div>
               <strong>Adjacent square</strong> means touching sides left, right,
               up, or down.
@@ -256,12 +256,12 @@ function PieceCard({ piece }: { piece: PieceInfo }) {
             width={48}
             height={48}
           />
-          <div className="text-sm text-gray-800">
+          <div className="text-sm text-card-foreground">
             <div>Moves: {piece.moves}</div>
             {piece.captures && <div>Captures: {piece.captures}</div>}
             {piece.bombards && <div>Bombards: {piece.bombards}</div>}
             <div>Captured by: {piece.capturedBy}</div>
-            <div className="text-blue-600">{piece.special}</div>
+            <div className="text-blue-600 dark:text-blue-400">{piece.special}</div>
           </div>
         </div>
       </CardContent>

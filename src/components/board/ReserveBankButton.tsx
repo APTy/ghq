@@ -41,9 +41,9 @@ export default function ReserveBankButton<T>({
           ["cursor-pointer"]: selectable && !selected,
         },
         {
-          ["hover:bg-gray-200"]: selectable && !selected,
+          ["hover:bg-accent"]: selectable && !selected,
         },
-        { ["bg-gray-300"]: selected }
+        { ["bg-accent"]: selected }
       )}
     >
       <img

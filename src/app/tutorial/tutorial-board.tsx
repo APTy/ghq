@@ -199,7 +199,7 @@ export function TutorialBoard(props: {
       </div>
 
       {/* Header */}
-      <div className="p-5 bg-gray-200">
+      <div className="p-5 bg-muted text-foreground rounded">
         <h1 className="text-2xl mb-4 font-bold">{tutorialFrame.heading}</h1>
         <h3 className="text-xl px-2">{tutorialFrame.details}</h3>
       </div>
@@ -209,7 +209,7 @@ export function TutorialBoard(props: {
         {message && (
           <h3
             className={`text-md text-center ${
-              encourageAdvance ? "text-green-700" : "text-yellow-600"
+              encourageAdvance ? "text-green-700 dark:text-green-400" : "text-yellow-600 dark:text-yellow-400"
             }`}
           >
             {message}
@@ -219,7 +219,7 @@ export function TutorialBoard(props: {
 
       {/* Game Board */}
       <div
-        className={classNames("flex bg-gray-50 justify-center", {
+        className={classNames("flex bg-gray-50 dark:bg-card text-card-foreground rounded justify-center", {
           ["pointer-events-none"]: tutorialFrame.disablePlay,
         })}
       >

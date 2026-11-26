@@ -69,9 +69,9 @@ export default function Page() {
                     <Link
                       key={boardType}
                       href={`/learn?boardType=${boardType}`}
-                      className="py-3 px-4 bg-white border border-gray-200 rounded-lg shadow hover:shadow-md min-w-48 w-80"
+                      className="py-3 px-4 bg-card text-card-foreground border border-border hover:bg-accent rounded-lg shadow hover:shadow-md min-w-48 w-80"
                     >
-                      <div className="tracking-tight text-gray-900">
+                      <div className="tracking-tight text-card-foreground">
                         {boardType}
                       </div>
                     </Link>
@@ -87,9 +87,9 @@ export default function Page() {
                     <Link
                       key={boardType}
                       href={`/learn?boardType=${boardType}`}
-                      className="py-3 px-4 bg-white border border-gray-200 rounded-lg shadow hover:shadow-md min-w-48 w-80"
+                      className="py-3 px-4 bg-card text-card-foreground border border-border hover:bg-accent rounded-lg shadow hover:shadow-md min-w-48 w-80"
                     >
-                      <div className="tracking-tight text-gray-900">
+                      <div className="tracking-tight text-card-foreground">
                         {boardType}
                       </div>
                     </Link>
@@ -105,9 +105,9 @@ export default function Page() {
                     <Link
                       key={boardType}
                       href={`/learn?boardType=${boardType}`}
-                      className="py-3 px-4 bg-white border border-gray-200 rounded-lg shadow hover:shadow-md min-w-48 w-80"
+                      className="py-3 px-4 bg-card text-card-foreground border border-border hover:bg-accent rounded-lg shadow hover:shadow-md min-w-48 w-80"
                     >
-                      <div className="tracking-tight text-gray-900">
+                      <div className="tracking-tight text-card-foreground">
                         {boardType}
                       </div>
                     </Link>
@@ -151,7 +151,7 @@ function ImportGame() {
       <Label htmlFor="fen">FEN</Label>
       <Input
         spellCheck={false}
-        className="font-mono bg-white w-96"
+        className="font-mono bg-background text-foreground w-96"
         type="fen"
         id="fen"
         placeholder=""
