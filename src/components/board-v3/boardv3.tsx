@@ -29,8 +29,11 @@ import { prepareAnalysisImport, ImportFormat } from "@/game/analysis-import";
 import { useBoardArrow } from "@/game/BoardArrowProvider";
 import { config } from "@/lib/config";
 
+import type { BotDifficulty } from "@/game/bot-difficulty";
+
 export interface GHQBoardV3Props extends GameClientOptions {
   bot?: boolean;
+  botDifficulty?: BotDifficulty;
   credentials?: string;
   match?: MatchV3;
   isLearning?: boolean;
@@ -114,7 +117,7 @@ function BoardSession({
     }
 
     if (opts.bot && opts.id) {
-      const multiplayer = new BotMultiplayer(engine, opts.id, opts.fen);
+      const multiplayer = new BotMultiplayer(engine, opts.id, opts.fen, undefined, opts.botDifficulty);
       setMultiplayer(multiplayer);
       return () => multiplayer.dispose();
     }
@@ -137,7 +140,7 @@ function BoardSession({
         multiplayer.disconnect();
       };
     }
-  }, [opts.bot, opts.id, opts.fen, engine, isSignedIn, getToken]);
+  }, [opts.bot, opts.botDifficulty, opts.id, opts.fen, engine, isSignedIn, getToken]);
 
   const realGame = useGameClient({
     ...opts,

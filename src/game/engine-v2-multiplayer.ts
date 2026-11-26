@@ -4,6 +4,7 @@ import { ghqFetch, SendTurnRequest } from "@/lib/api";
 import { createPGN, pgnToTurns } from "./pgn";
 import { API_URL } from "@/app/live/config";
 import { CpuAnalysisClient } from "./analysis";
+import { BOT_DIFFICULTIES, BotDifficulty } from "./bot-difficulty";
 import type { GameoverReason } from "./engine";
 
 export type OnTurnPlayedCallback = (turn: Turn) => void;
@@ -69,7 +70,8 @@ export class BotMultiplayer implements Multiplayer {
     private engine: GameEngine,
     id: string,
     private fen?: string,
-    private analysis: Pick<CpuAnalysisClient, "analyze" | "dispose"> = new CpuAnalysisClient()
+    private analysis: Pick<CpuAnalysisClient, "analyze" | "dispose"> = new CpuAnalysisClient(),
+    private difficulty: BotDifficulty = "medium"
   ) {
     this.board = this.engine.BaseBoard(fen);
     this._id = id;
@@ -179,15 +181,20 @@ export class BotMultiplayer implements Multiplayer {
       elapsedSecs: 0,
     };
     const started = performance.now();
+    const preset = BOT_DIFFICULTIES[this.difficulty];
+    let remainingMs: number = preset.timeMs;
     // Search normally returns the entire remaining turn. Re-search a partial
     // fallback if its time budget expired during turn generation.
     for (let attempt = 0; attempt < 8 && board.is_blue_turn() && !board.outcome(); attempt++) {
       const result = await this.analysis.analyze(board.serialize(), {
-        timeMs: 2400,
-        maxDepth: 3,
-        beamWidth: 8,
+        timeMs: Math.max(25, remainingMs),
+        maxDepth: preset.maxDepth,
+        beamWidth: preset.beamWidth,
         multiPv: 1,
       });
+      // Use engine-reported search time so initial Python loading is excluded.
+      // Reserve only the minimum search window for completing a partial turn.
+      remainingMs = Math.max(0, remainingMs - result.elapsedMs);
       if (this.disposed) throw new DOMException("Bot closed", "AbortError");
       const plan = result.turnMoves.length ? result.turnMoves : result.bestMove ? [result.bestMove] : [];
       if (!plan.length) throw new Error("The bot did not return a legal turn. Please try again.");

@@ -71,7 +71,7 @@ function fakeEngine(): GameEngine {
 }
 
 function answer(moves = ["sba1", "a8a7", "b8b7", "c8c7"]): AnalysisResult {
-  return { turnMoves: moves, bestMove: moves[0] } as AnalysisResult;
+  return { turnMoves: moves, bestMove: moves[0], elapsedMs: 100 } as AnalysisResult;
 }
 
 describe("CPU bot integration", () => {
@@ -88,6 +88,33 @@ describe("CPU bot integration", () => {
   afterEach(() => {
     bot?.dispose();
     jest.useRealTimers();
+  });
+
+  it.each([
+    ["easy", 300, 1, 4],
+    ["medium", 1200, 2, 6],
+    ["hard", 2400, 3, 8],
+  ] as ["easy" | "medium" | "hard", number, number, number][])("uses %s search limits", async (difficulty, timeMs, maxDepth, beamWidth) => {
+    const analyze = jest.fn<() => Promise<AnalysisResult>>().mockResolvedValue(answer());
+    bot = new BotMultiplayer(fakeEngine(), "test", undefined, {
+      analyze, dispose: jest.fn(),
+    }, difficulty);
+    bot.onTurnPlayed(jest.fn());
+    await bot.sendTurn(human);
+    expect(analyze).toHaveBeenCalledWith(expect.any(String), {
+      timeMs, maxDepth, beamWidth, multiPv: 1,
+    });
+  });
+
+  it("shares the search budget across partial replies", async () => {
+    const analyze = jest.fn<() => Promise<AnalysisResult>>()
+      .mockResolvedValueOnce({ ...answer(["a8a7"]), elapsedMs: 1100 })
+      .mockResolvedValueOnce(answer(["b8b7", "c8c7"]));
+    bot = new BotMultiplayer(fakeEngine(), "test", undefined, { analyze, dispose: jest.fn() });
+    bot.onTurnPlayed(jest.fn());
+    await bot.sendTurn(human);
+    expect(analyze).toHaveBeenNthCalledWith(2, expect.any(String), expect.objectContaining({ timeMs: 100 }));
+    expect(bot.loadGameTurns("test")).toHaveLength(2);
   });
 
   it("delivers a full coordinated turn after the human turn completes, including free captures", async () => {

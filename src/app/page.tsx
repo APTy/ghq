@@ -12,6 +12,7 @@ import PlayersTab from "./PlayersTab";
 // import { useState } from "react";
 // import { ChevronDown } from "lucide-react";
 import { PlayDailyButton } from "./live/PlayDailyButton";
+import { PlayBotButton } from "./live/PlayBotButton";
 import BackgroundPicture from "@/components/BackgroundPicture";
 
 function App() {
@@ -20,10 +21,6 @@ function App() {
 
   async function playLocal() {
     router.push("/local");
-  }
-
-  async function playBot() {
-    router.push("/bot");
   }
 
   async function goLearn() {
@@ -50,7 +47,7 @@ function App() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 place-items-center">
                 <PlayDailyButton />
                 <PlayOnlineButton />
-                <Button onClick={playBot}>🤖 Play Bot</Button>
+                <PlayBotButton />
                 <Button onClick={playLocal}>👨‍💻 Pass n&apos; Play</Button>
                 <Button onClick={startTutorial}>🙋‍♂️ Learn to Play</Button>
                 <Button onClick={goLearn}>📚 Rules & Puzzles</Button>

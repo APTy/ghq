@@ -3,6 +3,7 @@
 import { GHQBoardV3 } from "@/components/board-v3/boardv3";
 import { useMemo, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { parseBotDifficulty } from "@/game/bot-difficulty";
 import { nanoid } from "nanoid";
 
 export default function Page() {
@@ -24,7 +25,7 @@ export default function Page() {
 
   return (
     <div>
-      <GHQBoardV3 fen={fen} bot={true} playerId="0" id={id} />
+      <GHQBoardV3 fen={fen} bot={true} botDifficulty={parseBotDifficulty(searchParams.get("difficulty"))} playerId="0" id={id} />
     </div>
   );
 }
