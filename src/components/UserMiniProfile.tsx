@@ -60,13 +60,13 @@ export default function UserMiniProfile({
               <UserBadgeTag badge={fullUser?.badge} showTitle />
             </div>
             <div className="grid grid-cols-2 gap-x-4">
-              <div className="text-sm text-gray-500">Rating</div>
+              <div className="text-sm text-muted-foreground">Rating</div>
               <div className="text-sm">{fullUser?.elo}</div>
-              <div className="text-sm text-gray-500">Games this month</div>
+              <div className="text-sm text-muted-foreground">Games this month</div>
               <div className="text-sm">{fullUser?.gamesThisMonth || 0}</div>
-              <div className="text-sm text-gray-500">Total games</div>
+              <div className="text-sm text-muted-foreground">Total games</div>
               <div className="text-sm">{fullUser?.matchHistory.total || 0}</div>
-              <div className="text-sm text-gray-500">W/L/D</div>
+              <div className="text-sm text-muted-foreground">W/L/D</div>
               <div className="text-sm">
                 {fullUser?.matchHistory.wins || 0} |{" "}
                 {fullUser?.matchHistory.losses || 0} |{" "}
