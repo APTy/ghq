@@ -172,6 +172,7 @@ export default function BoardContainer({
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       className={classNames(
+        "rounded-[4px] overflow-hidden",
         isTutorial
           ? "w-[360px] h-[360px]"
           : "w-[360px] h-[360px] lg:w-[600px] lg:h-[600px] cursor-pointer relative",

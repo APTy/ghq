@@ -5,6 +5,9 @@
 :root {
   --blue: #7cb7ff;
   --red: #ff7c7c;
+  --bombard-red: rgb(248, 208, 208);
+  --bombard-blue: rgb(191, 219, 254);
+  --bombard-neutral: white;
 }
 
 .game-canvas {
@@ -36,10 +39,10 @@ body {
 .stripe-red-blue {
   background: repeating-linear-gradient(
     45deg,
-    /* Diagonal stripes */ rgb(248, 208, 208),
-    /* Start with red */ rgb(248, 208, 208) 20px,
-    /* Wider red stripe width */ rgb(191, 219, 254) 20px,
-    /* Start of blue */ rgb(191, 219, 254) 40px /* Wider blue stripe width */
+    /* Diagonal stripes */ var(--bombard-red),
+    /* Start with red */ var(--bombard-red) 20px,
+    /* Wider red stripe width */ var(--bombard-blue) 20px,
+    /* Start of blue */ var(--bombard-blue) 40px /* Wider blue stripe width */
   );
 }
 
@@ -47,10 +50,10 @@ body {
 .stripe-red-transparent {
   background: repeating-linear-gradient(
     45deg,
-    /* Diagonal stripes */ rgb(248, 208, 208),
-    /* Start with red */ rgb(248, 208, 208) 20px,
-    /* Wider red stripe width */ white 20px,
-    /* Start of transparent */ white 40px /* Wider transparent stripe width */
+    /* Diagonal stripes */ var(--bombard-red),
+    /* Start with red */ var(--bombard-red) 20px,
+    /* Wider red stripe width */ var(--bombard-neutral) 20px,
+    /* Start of transparent */ var(--bombard-neutral) 40px /* Wider transparent stripe width */
   );
 }
 
@@ -58,20 +61,20 @@ body {
 .stripe-blue-transparent {
   background: repeating-linear-gradient(
     45deg,
-    /* Diagonal stripes */ rgb(191, 219, 254),
-    /* Start with blue */ rgb(191, 219, 254) 20px,
-    /* Wider blue stripe width */ white 20px,
-    /* Start of transparent */ white 40px /* Wider transparent stripe width */
+    /* Diagonal stripes */ var(--bombard-blue),
+    /* Start with blue */ var(--bombard-blue) 20px,
+    /* Wider blue stripe width */ var(--bombard-neutral) 20px,
+    /* Start of transparent */ var(--bombard-neutral) 40px /* Wider transparent stripe width */
   );
 }
 
 .stripe-blue-transparent-sm {
   background: repeating-linear-gradient(
     45deg,
-    /* Diagonal stripes */ rgb(191, 219, 254),
-    /* Start with blue */ rgb(191, 219, 254) 6px,
-    /* Wider blue stripe width */ white 6px,
-    /* Start of transparent */ white 12px /* Wider transparent stripe width */
+    /* Diagonal stripes */ var(--bombard-blue),
+    /* Start with blue */ var(--bombard-blue) 6px,
+    /* Wider blue stripe width */ var(--bombard-neutral) 6px,
+    /* Start of transparent */ var(--bombard-neutral) 12px /* Wider transparent stripe width */
   );
 }
 
@@ -138,24 +141,24 @@ body {
     --radius: 0.5rem;
   }
   .dark {
-    --background: 222.2 84% 4.9%;
+    --background: 40 4% 18%;
     --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
+    --card: 40 4% 15%;
     --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
+    --popover: 40 4% 15%;
     --popover-foreground: 210 40% 98%;
     --primary: 210 40% 98%;
     --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
+    --secondary: 40 3% 24%;
     --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
+    --muted: 40 3% 22%;
+    --muted-foreground: 40 4% 70%;
+    --accent: 40 3% 27%;
     --accent-foreground: 210 40% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
+    --border: 40 3% 30%;
+    --input: 40 3% 30%;
     --ring: 212.7 26.8% 83.9%;
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;

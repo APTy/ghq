@@ -57,10 +57,10 @@ export default function EditReservesDialog({
           <DialogTitle>Edit Reserves</DialogTitle>
         </DialogHeader>
         <div className="grid grid-cols-4 gap-4">
-          <div className="font-semibold text-red-600 text-center">Unit</div>
-          <div className="font-semibold text-red-600 text-center">Red</div>
-          <div className="font-semibold text-blue-600 text-center">Unit</div>
-          <div className="font-semibold text-blue-600 text-center">Blue</div>
+          <div className="font-semibold text-red-600 dark:text-red-400 text-center">Unit</div>
+          <div className="font-semibold text-red-600 dark:text-red-400 text-center">Red</div>
+          <div className="font-semibold text-blue-600 dark:text-blue-400 text-center">Unit</div>
+          <div className="font-semibold text-blue-600 dark:text-blue-400 text-center">Blue</div>
           {kinds.map((kind) => (
             <React.Fragment key={kind}>
               <div className="flex items-center justify-center gap-2">

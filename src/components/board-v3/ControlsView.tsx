@@ -146,7 +146,7 @@ export default function ControlsView({
             shortcut="⏎"
             className={
               game.needsTurnConfirmation
-                ? "border-blue-800 bg-blue-200 text-blue-800 hover:bg-blue-100 transition-colors duration-200"
+                ? "border-blue-800 bg-blue-200 text-blue-800 hover:bg-blue-100 dark:border-blue-500 dark:bg-blue-950 dark:text-blue-200 dark:hover:bg-blue-900 transition-colors duration-200"
                 : ""
             }
           />

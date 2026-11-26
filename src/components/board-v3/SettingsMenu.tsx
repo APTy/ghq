@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import LoadPositionDialog from "./LoadPositionDialog";
 import type { ImportFormat } from "@/game/analysis-import";
+import { useTheme } from "next-themes";
 import { Ellipsis } from "lucide-react";
 
 export interface Settings {
@@ -34,16 +35,28 @@ export default function SettingsMenu({
   settings: Settings;
   setSettings: (settings: Settings) => void;
 }) {
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => setMounted(true), []);
   const [format, setFormat] = React.useState<ImportFormat | null>(null);
   return (
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline">
+          <Button variant="outline" aria-label="Board settings">
             <Ellipsis />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent className="w-56">
+          <DropdownMenuLabel>Appearance</DropdownMenuLabel>
+          <DropdownMenuCheckboxItem
+            checked={mounted && theme === "dark"}
+            disabled={!mounted}
+            onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")}
+          >
+            Dark mode
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuSeparator />
           <DropdownMenuLabel>Pass and Play</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuCheckboxItem

@@ -15,7 +15,7 @@ export default function Players({
   if (!isSignedIn) {
     return (
       <div className="flex flex-col gap-2 w-full">
-        <div className="text-gray-600 text-sm">
+        <div className="text-gray-600 dark:text-muted-foreground text-sm">
           Sign in to see online players!
         </div>
       </div>

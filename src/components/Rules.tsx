@@ -13,7 +13,7 @@ export default function Rules() {
       <div>
         It was originally designed by{" "}
         <a
-          className="text-blue-600 hover:text-blue-400"
+          className="text-blue-600 dark:text-blue-400 hover:text-blue-400 dark:hover:text-blue-300"
           href="https://www.vonnegutgame.com/"
           target="_blank"
         >
@@ -25,7 +25,7 @@ export default function Rules() {
       <div>
         The physical game was developed by Geoff Engelstein (see his great{" "}
         <a
-          className="text-blue-600 hover:text-blue-400"
+          className="text-blue-600 dark:text-blue-400 hover:text-blue-400 dark:hover:text-blue-300"
           href="https://www.youtube.com/watch?v=zfXPIhvFPjw"
           target="_blank"
         >
@@ -33,7 +33,7 @@ export default function Rules() {
         </a>{" "}
         video). Please support his work by{" "}
         <a
-          className="text-blue-600 hover:text-blue-400"
+          className="text-blue-600 dark:text-blue-400 hover:text-blue-400 dark:hover:text-blue-300"
           href="https://www.kvmlshop.org/product/kurt-vonnegut-the-lost-board-game-ghq/877"
           target="_blank"
         >
@@ -44,7 +44,7 @@ export default function Rules() {
 
       <div>
         <a
-          className="text-blue-600 hover:text-blue-400 flex items-center gap-1"
+          className="text-blue-600 dark:text-blue-400 hover:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1"
           href="https://github.com/acunniffe/ghq/releases"
           target="_blank"
         >
@@ -55,7 +55,7 @@ export default function Rules() {
       <div>
         👾 Join us on{" "}
         <a
-          className="text-blue-600 hover:text-blue-400"
+          className="text-blue-600 dark:text-blue-400 hover:text-blue-400 dark:hover:text-blue-300"
           href="https://discord.gg/MDaTYTdG5e"
           target="_blank"
         >

@@ -61,7 +61,7 @@ export default function Sidebar({
   return (
     <div
       className={classNames(
-        "w-full md:w-[450px] bg-white/80 h-screen overflow-y-auto shadow-lg transition-shadow duration-300 shadow-slate-400 space-y-3",
+        "w-full md:w-[450px] bg-card/80 h-screen overflow-y-auto shadow-lg transition-shadow duration-300 shadow-slate-400 dark:shadow-black/40 space-y-3",
         className
       )}
     >
@@ -82,7 +82,7 @@ export default function Sidebar({
           <h2
             className={classNames(
               "text-center font-bold",
-              gameover.status === "DRAW" && "text-gray-800",
+              gameover.status === "DRAW" && "text-foreground",
               gameover.status === "WIN" && gameover.winner === "RED"
                 ? "text-red-500"
                 : "text-blue-500"
@@ -94,14 +94,14 @@ export default function Sidebar({
               <>{gameover.winner === "RED" ? "Red" : "Blue"} Won!</>
             )}
           </h2>
-          <div className="text-center text-gray-800 text-sm">
+          <div className="text-center text-foreground text-sm">
             {gameoverReason(gameover)}
           </div>
           <div className="flex gap-1 mt-3">
             <PlayLocalIconButton game={activeGame} />
             <ShareGameDialog game={activeGame} />
             <HomeButton />
-            {onLoad && <SettingsMenu onLoad={onLoad} settings={settings} setSettings={setSettings} />}
+            <SettingsMenu onLoad={onLoad} settings={settings} setSettings={setSettings} />
           </div>
         </div>
       ) : (
@@ -119,7 +119,7 @@ export default function Sidebar({
               {currentPlayer === currentPlayerTurn ? "Your" : "Their"} Turn
             </div>
           </div>
-          <div className="text-gray-600 flex gap-1 justify-center items-center font-medium">
+          <div className="text-muted-foreground flex gap-1 justify-center items-center font-medium">
             {movesLeft} remaining move
             {movesLeft !== 1 ? "s" : ""}{" "}
           </div>

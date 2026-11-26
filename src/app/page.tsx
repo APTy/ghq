@@ -39,7 +39,7 @@ function App() {
         {/* <LatestMessage /> */}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 gap-[1px]">
-          <div className="col-span-1 flex flex-col gap-[1px] bg-white/60 rounded">
+          <div className="col-span-1 flex flex-col gap-[1px] bg-white/60 dark:bg-card/95 rounded">
             <div className="flex flex-col gap-2 p-4 border-black">
               <div className="flex items-center gap-2 font-bold text-lg">
                 Play a game
@@ -81,7 +81,7 @@ function App() {
             <div className="p-4 flex flex-col gap-2 flex-1"></div>
           </div>
 
-          <div className="col-span-1 flex flex-col gap-[1px] bg-white/60 rounded">
+          <div className="col-span-1 flex flex-col gap-[1px] bg-white/60 dark:bg-card/95 rounded">
             <GHQNight />
             <div className="p-4">
               <PlayersTab />

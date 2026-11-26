@@ -64,7 +64,7 @@ export default function GameoverDialog({
                   {redUser ? <Username user={redUser} /> : "Red"}
                 </div>
               </div>
-              <div className="text-gray-600 text-xs font-medium">vs.</div>
+              <div className="text-muted-foreground text-xs font-medium">vs.</div>
               <div className="flex justify-center sm:justify-start w-full">
                 <div className="bg-blue-500/10 border border-blue-500 rounded-lg px-2 py-1">
                   {blueUser ? <Username user={blueUser} /> : "Blue"}
@@ -73,10 +73,10 @@ export default function GameoverDialog({
             </div>
 
             <div className="flex flex-col w-full items-center justify-center">
-              <div className="font-bold text-gray-800">
+              <div className="font-bold text-foreground">
                 {winnerPlayer ? `${winnerPlayer} won!` : "It's a draw!"}
               </div>
-              <div className="text-xs text-gray-600">
+              <div className="text-xs text-muted-foreground">
                 {gameoverReason(gameover)}
               </div>
             </div>

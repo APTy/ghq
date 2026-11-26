@@ -169,21 +169,21 @@ export default function AnalysisPanel({
   return (
     <section
       aria-label="Engine analysis"
-      className="flex h-64 min-w-0 flex-col break-words border-y border-slate-200 text-slate-800"
+      className="flex h-64 min-w-0 flex-col break-words border-y border-border text-foreground"
     >
       <div
         role="img"
         aria-label={`Heuristic evaluation: ${evaluationText}.${stale ? " Previous position." : ""} Positive scores favor Red.`}
         aria-busy={searching}
-        className="relative h-5 shrink-0 overflow-hidden bg-blue-300 transition-opacity duration-200"
+        className="relative h-5 shrink-0 overflow-hidden bg-blue-300 dark:bg-blue-900 transition-opacity duration-200"
         style={{ opacity: searching || stale ? 0.55 : 1 }}
         title="Heuristic advantage, not a winning probability. Positive scores favor Red; one point is approximately one infantry unit."
       >
         <div
-          className="absolute inset-y-0 left-0 bg-red-300 transition-[width] duration-300"
+          className="absolute inset-y-0 left-0 bg-red-300 dark:bg-red-900 transition-[width] duration-300"
           style={{ width: `${redWidth}%` }}
         />
-        <div className="relative text-center text-xs font-semibold leading-5 text-slate-800">
+        <div className="relative text-center text-xs font-semibold leading-5 text-foreground">
           {evaluationText}
         </div>
       </div>
@@ -193,7 +193,7 @@ export default function AnalysisPanel({
           <span className="font-semibold">
             {isReplay ? "Replay analysis" : "Position analysis"}
           </span>
-          <span role="status" className="text-slate-500">
+          <span role="status" className="text-muted-foreground">
             {phase === "error"
               ? "Analysis unavailable"
               : searching
@@ -203,19 +203,19 @@ export default function AnalysisPanel({
         </div>
 
         {!visibleResult && phase !== "error" && (
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-muted-foreground">
             Preparing engine and searching turn plans…
           </p>
         )}
         {phase === "error" && (
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-muted-foreground">
             The engine could not finish. You can retry analysis.
           </p>
         )}
 
         {visibleResult && (
           <>
-            <p className="text-[11px] text-slate-500">
+            <p className="text-[11px] text-muted-foreground">
               Heuristic score · positive favors Red
               {searching && " · provisional"}
             </p>
@@ -234,22 +234,22 @@ export default function AnalysisPanel({
                     );
                     return (
                       <li key={`${index}-${plan.join(" ")}`}>
-                        <details className="rounded border border-slate-200 bg-white/70 text-xs">
+                        <details className="rounded border border-border bg-card/70 text-xs">
                           <summary className="cursor-pointer px-2 py-1.5">
                             <span className="font-semibold">
                               {index + 1}.{" "}
                               {describeAnalysisMove(plan[0] ?? "skip")}
                             </span>
-                            <span className="ml-2 whitespace-nowrap tabular-nums text-slate-500">
+                            <span className="ml-2 whitespace-nowrap tabular-nums text-muted-foreground">
                               {scoreLabel(line.score)}
                             </span>
                             {plan.length > 1 && (
-                              <span className="ml-1 text-slate-500">
+                              <span className="ml-1 text-muted-foreground">
                                 + {plan.length - 1} more
                               </span>
                             )}
                           </summary>
-                          <div className="space-y-2 border-t border-slate-100 px-3 py-2">
+                          <div className="space-y-2 border-t border-border px-3 py-2">
                             <ol className="list-inside list-decimal space-y-1">
                               {plan.map((move, step) => (
                                 <li key={`${step}-${move}`}>
@@ -258,7 +258,7 @@ export default function AnalysisPanel({
                               ))}
                             </ol>
                             {continuation.length > 0 && (
-                              <div className="text-slate-500">
+                              <div className="text-muted-foreground">
                                 <span className="font-medium">
                                   Continuation:{" "}
                                 </span>
@@ -276,7 +276,7 @@ export default function AnalysisPanel({
               </div>
             )}
             <p
-              className="text-[11px] text-slate-500"
+              className="text-[11px] text-muted-foreground"
               title={visibleResult.engineVersion}
             >
               {visibleResult.depth === 0
@@ -302,7 +302,7 @@ export default function AnalysisPanel({
             request.number < 2) && (
             <button
               type="button"
-              className="text-xs font-medium text-slate-600 underline underline-offset-2 hover:text-slate-900"
+              className="text-xs font-medium text-muted-foreground underline underline-offset-2 hover:text-foreground"
               onClick={() =>
                 setRequest((previous) => ({
                   state,

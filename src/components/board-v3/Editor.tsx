@@ -217,7 +217,7 @@ export function Editor() {
         )}
         {selectedAction === "TRASH" && (
           <img
-            className="bg-white/50 rounded-lg"
+            className="bg-card/50 rounded-lg"
             src={`trash-2.svg`}
             width={pieceSize * 0.7}
             height={pieceSize * 0.7}

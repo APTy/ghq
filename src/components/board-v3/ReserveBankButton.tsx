@@ -40,15 +40,15 @@ export default function ReserveBankButton<T>({
       }}
       className={cn(
         "col-span-1 select-none flex p-0 flex-col items-center justify-center relative rounded",
-        player === "RED" && "text-red-600",
-        player === "BLUE" && "text-blue-600",
+        player === "RED" && "text-red-600 dark:text-red-400",
+        player === "BLUE" && "text-blue-600 dark:text-blue-400",
         {
           ["cursor-pointer"]: selectable && !selected,
         },
         {
-          ["hover:bg-gray-200"]: selectable && !selected,
+          ["hover:bg-accent"]: selectable && !selected,
         },
-        { ["bg-gray-300"]: selected }
+        { ["bg-accent"]: selected }
       )}
     >
       <img

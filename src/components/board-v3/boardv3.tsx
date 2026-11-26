@@ -181,7 +181,7 @@ function BoardSession({
 
   return (
     <div
-      className={cn("flex flex-col md:flex-row", showSim ? "bg-gray-100" : "")}
+      className={cn("flex flex-col md:flex-row", showSim ? "bg-muted" : "")}
     >
       <div className="block sm:hidden mb-1">
         <MobileHeader />

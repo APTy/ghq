@@ -72,7 +72,7 @@ export default function LoadPositionDialog({
             aria-describedby={error ? "load-error" : undefined}
           />
           {error && (
-            <p id="load-error" role="alert" className="text-sm text-red-600">
+            <p id="load-error" role="alert" className="text-sm text-red-600 dark:text-red-400">
               {error}
             </p>
           )}

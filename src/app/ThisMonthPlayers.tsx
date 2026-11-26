@@ -58,9 +58,9 @@ export default function Leaderboard() {
     <div className="flex flex-col gap-2 w-full">
       {loading && (
         <div className="flex flex-col gap-0.5">
-          <div className="py-2 px-3 bg-white/50 animate-pulse rounded-lg h-8"></div>
-          <div className="py-2 px-3 bg-white/50 animate-pulse rounded-lg h-8"></div>
-          <div className="py-2 px-3 bg-white/50 animate-pulse rounded-lg h-8"></div>
+          <div className="py-2 px-3 bg-white/50 dark:bg-muted animate-pulse rounded-lg h-8"></div>
+          <div className="py-2 px-3 bg-white/50 dark:bg-muted animate-pulse rounded-lg h-8"></div>
+          <div className="py-2 px-3 bg-white/50 dark:bg-muted animate-pulse rounded-lg h-8"></div>
         </div>
       )}
 
@@ -82,11 +82,11 @@ export default function Leaderboard() {
               />
             </div>
             <div className="col-span-3 md:col-span-2 grid grid-cols-5 gap-1 items-center text-right">
-              <span className="text-green-700 text-center">{user.wins}</span>
-              <span className="text-gray-500 text-center">|</span>
-              <span className="text-red-700 text-center">{user.losses}</span>
-              <span className="text-gray-500 text-center">|</span>
-              <span className="text-gray-700 text-center">{user.draws}</span>
+              <span className="text-green-700 dark:text-green-400 text-center">{user.wins}</span>
+              <span className="text-gray-500 dark:text-muted-foreground text-center">|</span>
+              <span className="text-red-700 dark:text-red-400 text-center">{user.losses}</span>
+              <span className="text-gray-500 dark:text-muted-foreground text-center">|</span>
+              <span className="text-gray-700 dark:text-foreground text-center">{user.draws}</span>
             </div>
           </div>
         ))}

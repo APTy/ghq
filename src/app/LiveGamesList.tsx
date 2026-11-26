@@ -48,7 +48,7 @@ export default function LiveGamesList() {
         <Button
           variant="ghost"
           size="sm"
-          className="h-5 text-gray-600 hover:bg-white/70"
+          className="h-5 text-gray-600 dark:text-muted-foreground hover:bg-white/70 dark:hover:bg-accent"
           onClick={() =>
             filterUserId ? setFilterUserId("") : setFilterUserId(userId ?? "")
           }
@@ -58,15 +58,15 @@ export default function LiveGamesList() {
       </div>
 
       {!loading && games.length === 0 && (
-        <div className="text-gray-600 text-sm">No games found!</div>
+        <div className="text-gray-600 dark:text-muted-foreground text-sm">No games found!</div>
       )}
       {loading && (
         <div className="flex flex-col gap-0.5">
-          <div className="py-2 px-3 bg-white/50 animate-pulse rounded-lg h-8"></div>
-          <div className="py-2 px-3 bg-white/50 animate-pulse rounded-lg h-8"></div>
-          <div className="py-2 px-3 bg-white/50 animate-pulse rounded-lg h-8"></div>
-          <div className="py-2 px-3 bg-white/50 animate-pulse rounded-lg h-8"></div>
-          <div className="py-2 px-3 bg-white/50 animate-pulse rounded-lg h-8"></div>
+          <div className="py-2 px-3 bg-white/50 dark:bg-muted animate-pulse rounded-lg h-8"></div>
+          <div className="py-2 px-3 bg-white/50 dark:bg-muted animate-pulse rounded-lg h-8"></div>
+          <div className="py-2 px-3 bg-white/50 dark:bg-muted animate-pulse rounded-lg h-8"></div>
+          <div className="py-2 px-3 bg-white/50 dark:bg-muted animate-pulse rounded-lg h-8"></div>
+          <div className="py-2 px-3 bg-white/50 dark:bg-muted animate-pulse rounded-lg h-8"></div>
         </div>
       )}
 

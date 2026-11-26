@@ -1,3 +1,4 @@
+import ThemeProvider from "@/components/ThemeProvider";
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
@@ -50,12 +51,14 @@ export default function RootLayout({
     return (
       <BoardArrowProvider>
         <LatestMoveProvider>
-          <html lang="en">
+          <html lang="en" suppressHydrationWarning>
             <body
               className={`${geistSans.variable} ${geistMono.variable} antialiased`}
             >
-              {children}
-              <Toaster />
+              <ThemeProvider>
+                {children}
+                <Toaster />
+              </ThemeProvider>
             </body>
           </html>
         </LatestMoveProvider>
@@ -72,13 +75,15 @@ export default function RootLayout({
       <MatchmakingProvider>
         <BoardArrowProvider>
           <LatestMoveProvider>
-            <html lang="en">
+            <html lang="en" suppressHydrationWarning>
               <body
                 className={`${geistSans.variable} ${geistMono.variable} antialiased`}
               >
-                {children}
-                <Toaster />
-                <MatchmakingToast />
+                <ThemeProvider>
+                  {children}
+                  <Toaster />
+                  <MatchmakingToast />
+                </ThemeProvider>
               </body>
             </html>
           </LatestMoveProvider>

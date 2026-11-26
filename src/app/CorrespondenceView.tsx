@@ -132,7 +132,7 @@ export default function CorrespondenceView() {
         matches.length === 0 &&
         sentChallenges.length === 0 &&
         receivedChallenges.length === 0 && (
-          <div className="text-gray-600 text-sm">
+          <div className="text-gray-600 dark:text-muted-foreground text-sm">
             No games or open challenges found
           </div>
         )}
@@ -171,12 +171,12 @@ function ReceivedChallengeRow({
   return (
     <div
       key={`${challenge.challenger.id}-${challenge.target.id}`}
-      className="p-1 px-2 bg-white/50 border border-white/50 flex justify-between rounded flex-col sm:flex-row text-sm"
+      className="p-1 px-2 bg-white/50 dark:bg-muted border border-white/50 dark:border-border flex justify-between rounded flex-col sm:flex-row text-sm"
     >
       <div className="flex items-center gap-1 px-2">
         <Mail className="h-4 w-4 mr-1" />
         Challenge from{" "}
-        <span className="font-bold text-gray-700">
+        <span className="font-bold text-gray-700 dark:text-foreground">
           {challenge.challenger.username}
         </span>
         <RatedBadge rated={challenge.rated} />
@@ -205,18 +205,18 @@ function SentChallengeRow({ challenge }: { challenge: any }) {
   return (
     <div
       key={`${challenge.challenger.id}-${challenge.target.id}`}
-      className="p-1 px-2 bg-white/50 border border-white/50 flex justify-between rounded flex-col sm:flex-row"
+      className="p-1 px-2 bg-white/50 dark:bg-muted border border-white/50 dark:border-border flex justify-between rounded flex-col sm:flex-row"
     >
       <div className="flex items-center gap-1 px-2 text-sm">
         <MailQuestion className="h-4 w-4 mr-1" />
         Challenged{" "}
-        <span className="font-bold text-gray-700">
+        <span className="font-bold text-gray-700 dark:text-foreground">
           {challenge.target.username}
         </span>
         <RatedBadge rated={challenge.rated} />
         <CustomGameLink challenge={challenge} />
       </div>
-      <div className="flex items-center text-xs text-gray-600 justify-end">
+      <div className="flex items-center text-xs text-gray-600 dark:text-muted-foreground justify-end">
         Awaiting response...
       </div>
     </div>
@@ -238,7 +238,7 @@ function CustomGameLink({ challenge }: { challenge: any }) {
   return (
     <Link
       href={learnUrl}
-      className="text-sm text-gray-500 hover:text-gray-700"
+      className="text-sm text-gray-500 dark:text-muted-foreground hover:text-gray-700 dark:hover:text-foreground"
       target="_blank"
     >
       Custom Game

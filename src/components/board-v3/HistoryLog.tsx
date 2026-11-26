@@ -111,7 +111,7 @@ export function HistoryLog({
 
   return (
     <div className="flex flex-col gap-1 p-2 h-[350px]">
-      <div className="font-bold text-gray-800">Activity</div>
+      <div className="font-bold text-foreground">Activity</div>
       <div
         id="history-log-list"
         className="overflow-y-auto border h-[600px] flex flex-col rounded"
@@ -129,21 +129,21 @@ export function HistoryLog({
                 key={overallMoveIndex}
                 id={`move-${overallMoveIndex}`}
                 className={cn(
-                  "inline-flex justify-between items-center hover:bg-gray-200 px-2 py-0.5 text-xs text-gray-800",
-                  turnIndex % 2 === 0 ? "bg-gray-50" : "",
-                  overallMoveIndex === seekIndex - 1 && "bg-gray-200",
+                  "inline-flex justify-between items-center hover:bg-accent px-2 py-0.5 text-xs text-foreground",
+                  turnIndex % 2 === 0 ? "bg-muted/50" : "",
+                  overallMoveIndex === seekIndex - 1 && "bg-accent",
                   moveIndex === turn.moves.length - 1 && turn.elapsedSecs > 0
-                    ? "border-b border-gray-200"
+                    ? "border-b border-border"
                     : ""
                 )}
                 title={readable}
                 onClick={() => onMoveClick(overallMoveIndex + 1)}
               >
                 <div className="flex items-center space-x-3">
-                  <span className="text-gray-800/70 text-xxs w-2">
+                  <span className="text-muted-foreground text-xxs w-2">
                     {moveIndex === turn.moves.length - 1 && turnIndex + 1}
                   </span>
-                  <div className="inline-flex items-center space-x-1 text-gray-800">
+                  <div className="inline-flex items-center space-x-1 text-foreground">
                     {renderMove(
                       game.movePieces[overallMoveIndex],
                       move,
@@ -160,7 +160,7 @@ export function HistoryLog({
                         duration={turn.elapsedSecs}
                         player={player}
                       />
-                      <div className="text-gray-800/70 text-xxs font-semibold">
+                      <div className="text-muted-foreground text-xxs font-semibold">
                         {elapsedSecsToString(turn.elapsedSecs)}
                       </div>
                     </div>
@@ -171,7 +171,7 @@ export function HistoryLog({
         )}
 
         {gameover && (
-          <div className="inline-flex space-x-2 items-center py-0.5 px-1 font-semibold text-sm text-gray-800">
+          <div className="inline-flex space-x-2 items-center py-0.5 px-1 font-semibold text-sm text-foreground">
             {gameover.status === "DRAW" && "Game ended in a draw"}
             {gameover.winner && (
               <>

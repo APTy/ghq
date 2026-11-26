@@ -14,7 +14,7 @@ import { User } from "@/lib/types";
 
 export default function Header() {
   return (
-    <div className="flex justify-between border-b bg-white">
+    <div className="flex justify-between border-b bg-background">
       <Link
         className="text-4xl font-bold text-blue-400 flex gap-1 items-center px-2"
         href="/"
