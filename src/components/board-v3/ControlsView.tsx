@@ -83,6 +83,7 @@ export default function ControlsView({
     redo: doRedo,
     cancel,
     skip: doSkip,
+    canConfirm: canSkip && game.needsTurnConfirmation,
     replay: doReplay,
     backward: () => seek({ delta: -1 }),
     forward: () => seek({ delta: 1 }),
