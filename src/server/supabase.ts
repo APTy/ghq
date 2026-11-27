@@ -53,7 +53,7 @@ export function matchToSupabaseMatch(
     time_control_allowed_time: match.timeControlAllowedTime,
     time_control_bonus: match.timeControlBonus,
     time_control_variant: match.timeControlVariant ?? null,
-    starting_fen: match.startingFen ?? null,
+    starting_fen: match.startingFen?.trim() || null,
     pgn: match.pgn,
   };
 }
@@ -75,7 +75,7 @@ export function supabaseMatchToMatchV3(supabaseMatch: SupabaseMatch): MatchV3 {
     timeControlAllowedTime: supabaseMatch.time_control_allowed_time ?? 0,
     timeControlBonus: supabaseMatch.time_control_bonus ?? 0,
     timeControlVariant: supabaseMatch.time_control_variant ?? undefined,
-    startingFen: supabaseMatch.starting_fen ?? undefined,
+    startingFen: supabaseMatch.starting_fen?.trim() || undefined,
     pgn: supabaseMatch.pgn || "",
     winnerUserId: supabaseMatch.winner_id ?? undefined,
     status: supabaseMatch.status ?? undefined,

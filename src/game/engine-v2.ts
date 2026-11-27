@@ -610,9 +610,9 @@ export class GameClient {
       throw new Error("engine is required");
     }
     this.engine = engine;
-    this.initialFen = fen;
+    this.initialFen = fen?.trim() || undefined;
     this.multiplayer = multiplayer;
-    const board = this.engine.BaseBoard(fen);
+    const board = this.engine.BaseBoard(this.initialFen);
     this.boards = [board];
     this.currentBoardIndex = 0;
     this.isTutorial = isTutorial ?? false;

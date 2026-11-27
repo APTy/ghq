@@ -43,6 +43,23 @@ function fakeEngine(): GameEngine {
   } as unknown as GameEngine;
 }
 
+describe("GameClient starting position", () => {
+  it.each([undefined, "", "   "])("uses the default board for blank FEN %p", (fen) => {
+    const engine = fakeEngine();
+    const baseBoard = jest.spyOn(engine, "BaseBoard");
+    new GameClient({ engine, fen });
+    expect(baseBoard).toHaveBeenCalledWith(undefined);
+  });
+
+  it("passes a custom starting position to the engine", () => {
+    const engine = fakeEngine();
+    const baseBoard = jest.spyOn(engine, "BaseBoard");
+    const fen = "8/8/8/8/8/8/8/8 I i r 0";
+    new GameClient({ engine, fen });
+    expect(baseBoard).toHaveBeenCalledWith(fen);
+  });
+});
+
 describe("GameClient terminal history", () => {
   it.each([true, false])("submits terminal bombardment without Skip (bot=%s)", async (bot) => {
     const submitted: Turn[] = [];
