@@ -1,9 +1,10 @@
-import { ActiveMatch, MatchV3, User } from "@/lib/types";
+import { ActiveMatch, MatchV3 } from "@/lib/types";
 import {
   matchToSupabaseMatch,
   SupabaseMatch,
   supabaseMatchToMatchV3,
 } from "./supabase";
+import { finalizeMatch } from "./match-finalization";
 import { getAdminSupabase } from "@/lib/supabase-server";
 
 export async function createMatchV3(match: MatchV3): Promise<void> {
@@ -22,6 +23,7 @@ export async function fetchMatchV3(id: string): Promise<MatchV3 | undefined> {
     .from("matches")
     .select("*")
     .eq("id", id)
+    .eq("engine_version", 2)
     .single();
   if (error?.code === "PGRST116") {
     return undefined;
@@ -43,6 +45,7 @@ export async function updateMatchPGN(
     .from("matches")
     .select("*")
     .eq("id", id)
+    .eq("engine_version", 2)
     .single();
 
   if (fetchError) {
@@ -53,12 +56,22 @@ export async function updateMatchPGN(
     throw new Error(`Match with id ${id} not found`);
   }
 
+  if (match.status !== null) {
+    throw new Error(`Match ${id} is already complete`);
+  }
   const updatedMatch = pgnUpdater(match);
+  if (updatedMatch === match) return supabaseMatchToMatchV3(match);
+
+  if (updatedMatch.status) {
+    return supabaseMatchToMatchV3(await finalizeMatch(match, updatedMatch));
+  }
 
   const { data: updateResult, error: updateError } = await supabase
     .from("matches")
     .update(updatedMatch)
     .eq("id", id)
+    .is("status", null)
+    .eq("engine_version", 2)
     .eq("pgn", match.pgn) // IMPORTANT: ensure no other process has modified the PGN since we fetched it
     .select();
 
@@ -144,21 +157,6 @@ export async function getActiveMatch(
   };
 }
 
-export async function deleteActiveMatches(matchId: string) {
-  const supabase = getAdminSupabase();
-  const { error } = await supabase
-    .from("active_user_matches")
-    .delete()
-    .eq("match_id", matchId);
-  if (error) {
-    console.log({
-      message: "Error deleting active_user_matches",
-      matchId,
-      error,
-    });
-  }
-}
-
 export function onMatchChange(callback: (newMatch: MatchV3) => void) {
   const supabase = getAdminSupabase();
   console.log(JSON.stringify({ message: "listening for match changes" }));
@@ -172,45 +170,24 @@ export function onMatchChange(callback: (newMatch: MatchV3) => void) {
         table: "matches",
       },
       (payload) => {
-        callback(supabaseMatchToMatchV3(payload.new as SupabaseMatch));
+        if (payload.new.engine_version === 2) {
+          callback(supabaseMatchToMatchV3(payload.new as SupabaseMatch));
+        }
       }
     )
     .subscribe();
 }
 
-export async function updatePlayerElo(
-  player: User,
-  elo: number
-): Promise<void> {
-  const supabase = getAdminSupabase();
-  const { error } = await supabase
-    .from("users")
-    .update({
-      elo,
-      gamesThisMonth: player.gamesThisMonth || 0,
-      badge: player.badge || null,
-    })
-    .eq("id", player.id);
-  if (error) {
-    console.log({
-      message: "Error updating player elo",
-      playerId: player.id,
-      elo,
-      error,
-    });
-  }
-  return;
-}
-
-export async function listInProgressLiveMatches(): Promise<MatchV3[]> {
+export async function listInProgressLiveMatches(): Promise<SupabaseMatch[]> {
   const supabase = getAdminSupabase();
   const { data, error } = await supabase
     .from("matches")
     .select("*")
     .is("status", null)
-    .eq("is_correspondence", false);
+    .eq("is_correspondence", false)
+    .eq("engine_version", 2);
   if (error) {
     throw error;
   }
-  return data.map(supabaseMatchToMatchV3);
+  return data;
 }

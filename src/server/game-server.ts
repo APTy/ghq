@@ -10,22 +10,18 @@ import { createPGN, gameEndTurnFromGameover, pgnToTurns } from "@/game/pgn";
 import {
   createActiveMatches,
   createMatchV3,
-  deleteActiveMatches,
   fetchMatchV3,
   getActiveMatch,
   listInProgressLiveMatches,
   onMatchChange,
   updateMatchPGN,
-  updatePlayerElo,
 } from "./matchv3-store";
 import { createHash } from "node:crypto";
 import { GameoverState } from "@/game/engine";
 import { SupabaseMatch } from "./supabase";
-import { updateUserStats } from "./user-stats";
-import { getUser } from "@/lib/supabase";
-import { calculateElo } from "@/game/elo";
+import { finalizeMatch } from "./match-finalization";
 import { allowedMoveToUci } from "@/game/notation-uci";
-import { getMatchTimeControl, isTurnAuthorized } from "./turn-processing";
+import { isTurnAuthorized } from "./turn-processing";
 
 interface Listener {
   id: string;
@@ -183,6 +179,10 @@ export function addGameServerRoutes(
       return;
     }
 
+    if (match.status) {
+      ctx.throw(409, "Game is already complete");
+      return;
+    }
     const turnReq = ctx.request.body as SendTurnRequest;
 
     if (!turnReq.credentials) {
@@ -205,7 +205,7 @@ export function addGameServerRoutes(
 
     const { turn } = turnReq;
 
-    const updatedMatch = await updateMatchPGN(id, (match): SupabaseMatch => {
+    await updateMatchPGN(id, (match): SupabaseMatch => {
       const turns = pgnToTurns(match.pgn || "");
 
       const timeControl = getSupabaseMatchTimeControl(match);
@@ -213,6 +213,7 @@ export function addGameServerRoutes(
       // TODO(tyler): can we cache this game client per match id?
       const game = new GameClient({
         engine,
+        fen: match.starting_fen || undefined,
         isPassAndPlayMode: true,
         timeControl,
         gameStartTimeMs: getGameStartTimeMs(match?.created_at),
@@ -254,14 +255,24 @@ export function addGameServerRoutes(
 
       // debugPrintGameState(game, turn);
 
-      // Validate that the turn can be applied onto the game successfully
-      game.pushTurn(turn);
+      if (turn.turn !== game.turn) ctx.throw(409, "Unexpected turn number");
+      // Only resignation is an explicit result. Other results must be derived
+      // from the authoritative board, not a client-supplied winner/status.
+      const appliedTurn =
+        turn.status === "resign"
+          ? turn
+          : {
+              ...turn,
+              status: undefined,
+              winner: undefined,
+            };
+      game.pushTurn(appliedTurn);
 
       // TODO(tyler): validate that time is accurate within 1 second of the actual time
 
       // TODO(tyler): set a time to check back for game end based on the upcoming player's time left
 
-      turns.push(turn);
+      turns.push(appliedTurn);
 
       const updatedMatch = { ...match };
 
@@ -271,7 +282,7 @@ export function addGameServerRoutes(
         updatedMatch.status = gameover.status;
         updatedMatch.winner_id = getWinnerId(gameover);
         updatedMatch.gameover_reason = gameover.reason;
-        if (!turn.status) {
+        if (!appliedTurn.status) {
           turns.push(gameEndTurnFromGameover(turn.turn + 1, gameover));
         }
       }
@@ -286,11 +297,6 @@ export function addGameServerRoutes(
 
       return updatedMatch;
     });
-
-    if (updatedMatch.status) {
-      await deleteActiveMatches(updatedMatch.id);
-      await updateUserElos(updatedMatch);
-    }
 
     ctx.body = JSON.stringify({ success: true });
   });
@@ -319,6 +325,7 @@ export async function createNewV3Match({
   const player0Creds = nanoid();
   const player1Creds = nanoid();
   const match: MatchV3 = {
+    engineVersion: 2,
     id: matchId,
     createdAt: new Date().toISOString(),
     player0UserId: user0.id,
@@ -382,48 +389,6 @@ export async function getV3MatchInfo(
   return { match };
 }
 
-async function updateUserElos(match: MatchV3): Promise<void> {
-  if (match.status === "ABORTED") {
-    console.log("Match aborted, skipping elo update", match.id);
-    return;
-  } else if (!match.rated) {
-    console.log("Unrated match, skipping elo update", match.id);
-    return;
-  }
-
-  const [player0, player1] = await Promise.all([
-    getUser(match.player0UserId),
-    getUser(match.player1UserId),
-  ]);
-
-  updateUserStats(player0);
-  const player0Elo = calculateElo(
-    player0.elo,
-    player1.elo,
-    match.status === "DRAW"
-      ? 0.5
-      : match.winnerUserId === match.player0UserId
-      ? 1
-      : 0
-  );
-
-  updateUserStats(player1);
-  const player1Elo = calculateElo(
-    player1.elo,
-    player0.elo,
-    match.status === "DRAW"
-      ? 0.5
-      : match.winnerUserId === match.player1UserId
-      ? 1
-      : 0
-  );
-
-  await Promise.all([
-    updatePlayerElo(player0, player0Elo),
-    updatePlayerElo(player1, player1Elo),
-  ]);
-}
-
 export function debugPrintGameState(game: GameClient, turn: Turn) {
   console.log({
     message: "Allowed moves",
@@ -447,17 +412,23 @@ export async function matchLifecycleV3(engine: GameEngine) {
   const matches = await listInProgressLiveMatches();
 
   for (const match of matches) {
-    await checkAndUpdateMatch(engine, match);
+    try {
+      await checkAndUpdateMatch(engine, match);
+    } catch (error) {
+      // A turn or another worker may have won the compare-and-swap. Re-read
+      // on the next tick; one match must not stop checks for everyone else.
+      console.error("Unable to finalize match", match.id, error);
+    }
   }
 }
 
 function getSupabaseMatchTimeControl(
   match: SupabaseMatch
 ): TimeControl | undefined {
-  if (match.time_control_allowed_time && match.time_control_bonus) {
+  if (match.time_control_allowed_time && match.time_control_allowed_time > 0) {
     return {
       time: match.time_control_allowed_time,
-      bonus: match.time_control_bonus,
+      bonus: match.time_control_bonus ?? 0,
       variant: match.time_control_variant || undefined,
     };
   }
@@ -469,60 +440,35 @@ function getGameStartTimeMs(createdAt?: string) {
   return createdAt ? new Date(createdAt).getTime() : undefined;
 }
 
-async function checkAndUpdateMatch(engine: GameEngine, match: MatchV3) {
+async function checkAndUpdateMatch(engine: GameEngine, match: SupabaseMatch) {
+  // Evaluate the batch snapshot without another read for each active game.
   const turns = pgnToTurns(match.pgn || "");
-  // console.log("checking and updating match", match.id, turns.length);
-
-  const timeControl = getMatchTimeControl(match);
-
   const game = new GameClient({
     engine,
+    fen: match.starting_fen || undefined,
     isPassAndPlayMode: true,
-    timeControl,
-    gameStartTimeMs: getGameStartTimeMs(match.createdAt),
+    timeControl: getSupabaseMatchTimeControl(match),
+    gameStartTimeMs: getGameStartTimeMs(match.created_at),
   });
-
-  // Apply the historical moves to the game state
-  try {
-    for (const turn of turns) {
-      game.pushTurn(turn);
-    }
-  } catch (error) {
-    console.error("Error applying moves to game", error);
-    return match;
+  for (const turn of turns) game.pushTurn(turn);
+  const gameover = game.getGameover();
+  if (!gameover) return;
+  if (!turns[turns.length - 1]?.status) {
+    turns.push(gameEndTurnFromGameover(turns.length + 1, gameover));
   }
-
-  const getWinnerId = (gameover: GameoverState) => {
-    return gameover.winner
-      ? gameover.winner === "RED"
-        ? match.player0UserId
-        : match.player1UserId
-      : null;
-  };
-
-  // Check for gameover due to timeout or something already on the board.
-  const gameoverDueToTimeout = game.getGameover();
-  if (!gameoverDueToTimeout) {
-    return;
-  }
-
-  console.log("Updating match due to timeout", {
-    id: match.id,
-    gameover: gameoverDueToTimeout,
+  // Only terminal candidates touch the database again. Finalization checks
+  // the snapshot PGN and status under lock; stale results are rejected.
+  await finalizeMatch(match, {
+    ...match,
+    pgn: createPGN(turns),
+    status: gameover.status,
+    winner_id:
+      gameover.winner === "RED"
+        ? match.player0_id
+        : gameover.winner === "BLUE"
+        ? match.player1_id
+        : null,
+    gameover_reason: gameover.reason,
+    current_turn_player_id: null,
   });
-  await updateMatchPGN(match.id, (match): SupabaseMatch => {
-    const turns = pgnToTurns(match.pgn || "");
-    turns.push(gameEndTurnFromGameover(turns.length + 1, gameoverDueToTimeout));
-    const pgn = createPGN(turns);
-    return {
-      ...match,
-      pgn,
-      status: gameoverDueToTimeout.status,
-      winner_id: getWinnerId(gameoverDueToTimeout),
-      gameover_reason: gameoverDueToTimeout.reason,
-    };
-  });
-
-  await deleteActiveMatches(match.id);
-  await updateUserElos(match);
 }

@@ -13,7 +13,7 @@ export async function listMatches({
   let query = supabase
     .from("matches")
     .select(
-      "id, created_at, player0_id, player1_id, player0_elo, player1_elo, winner_id, status, current_turn_player_id, rated"
+      "id, created_at, player0_id, player1_id, player0_elo, player1_elo, winner_id, status, current_turn_player_id, rated, engine_version"
     );
 
   if (userId) {
@@ -64,6 +64,7 @@ export async function listMatches({
     for (const match of matchesData) {
       matches.push({
         id: match.id,
+        engineVersion: match.engine_version,
         player1: userMap.get(match.player0_id),
         player2: userMap.get(match.player1_id),
         winner: userMap.get(match.winner_id) ?? null,

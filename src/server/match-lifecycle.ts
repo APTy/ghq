@@ -31,6 +31,7 @@ export async function matchLifecycle({
       "id, player0_id, player1_id, status, current_turn_player_id, is_correspondence"
     )
     .eq("is_correspondence", false)
+    .eq("engine_version", 1)
     .in("id", matchIds);
 
   if (matchesError) {

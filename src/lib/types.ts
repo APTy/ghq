@@ -1,4 +1,5 @@
 export interface MatchModel {
+  engineVersion: 1 | 2;
   id: string;
   winner: string;
   player1: string;
@@ -68,6 +69,7 @@ export function badgeToGamesPlayed(badge: UserBadge): number {
 }
 
 export interface MatchV3 {
+  engineVersion: 2;
   id: string;
   createdAt: string;
   player0UserId: string;

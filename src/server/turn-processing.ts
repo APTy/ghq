@@ -32,6 +32,7 @@ export async function isTurnAuthorized(
   match: MatchV3
 ): Promise<boolean> {
   const { turn, playerId, credentials } = turnReq;
+  if (playerId !== "0" && playerId !== "1") return false;
   const requiredHashCredentials =
     playerId === "0"
       ? match.player0CredentialsHash
@@ -44,7 +45,9 @@ export async function isTurnAuthorized(
   const isAuthorized =
     authenticatedUserId === requiredPlayerId &&
     hashCredentials(credentials) === requiredHashCredentials &&
-    (requiredTurnValidator(turn) || isResignAuthorized(turn, playerId));
+    (turn.status === "resign"
+      ? isResignAuthorized(turn, playerId) && turn.moves.length === 0
+      : requiredTurnValidator(turn));
 
   if (!isAuthorized) {
     console.log(
@@ -71,10 +74,10 @@ function isResignAuthorized(turn: Turn, playerId: string): boolean {
 }
 
 export function getMatchTimeControl(match: MatchV3) {
-  if (match.timeControlAllowedTime && match.timeControlBonus) {
+  if (match.timeControlAllowedTime > 0) {
     return {
       time: match.timeControlAllowedTime,
-      bonus: match.timeControlBonus,
+      bonus: match.timeControlBonus ?? 0,
       variant: match.timeControlVariant || undefined,
     };
   }

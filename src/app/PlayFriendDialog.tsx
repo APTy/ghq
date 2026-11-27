@@ -17,7 +17,6 @@ import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import ButtonV2 from "./live/ButtonV2";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Accordion,
   AccordionContent,
@@ -33,18 +32,11 @@ interface User {
 }
 
 interface AdvancedSettingsProps {
-  rated: boolean;
-  setRated: (rated: boolean) => void;
   fen: string;
   setFen: (fen: string) => void;
 }
 
-function AdvancedSettings({
-  rated,
-  setRated,
-  fen,
-  setFen,
-}: AdvancedSettingsProps) {
+function AdvancedSettings({ fen, setFen }: AdvancedSettingsProps) {
   const [invalidFenError, setInvalidFenError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -78,21 +70,6 @@ function AdvancedSettings({
                 <div className="text-red-500 text-sm">{invalidFenError}</div>
               )}
             </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="rated"
-                checked={rated}
-                onCheckedChange={(checked) =>
-                  setRated(checked === "indeterminate" ? true : checked)
-                }
-              />
-              <label
-                htmlFor="rated"
-                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-              >
-                Rated game
-              </label>
-            </div>
           </div>
         </AccordionContent>
       </AccordionItem>
@@ -107,7 +84,7 @@ export function PlayFriendDialog() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [open, setOpen] = useState<boolean>(false);
   const [search, setSearch] = useState<string>("");
-  const [rated, setRated] = useState<boolean>(true);
+  const rated = true;
   const [fen, setFen] = useState<string>("");
 
   useEffect(() => {
@@ -209,12 +186,7 @@ export function PlayFriendDialog() {
               ))}
           </div>
         </div>
-        <AdvancedSettings
-          rated={rated}
-          setRated={setRated}
-          fen={fen}
-          setFen={setFen}
-        />
+        <AdvancedSettings fen={fen} setFen={setFen} />
         <DialogFooter className="sm:justify-start">
           <DialogClose asChild>
             <Button

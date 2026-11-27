@@ -89,6 +89,7 @@ export default function Page({ params }: { params: Promise<{ id: string }> }) {
     }
     return {
       id: id,
+      fen: matchInfo.match.startingFen,
       playerId: getPlayerId(matchInfo),
       credentials: getCredentials(matchInfo),
       timeControl: getTimeControl(matchInfo),

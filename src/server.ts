@@ -7,11 +7,6 @@ import {
   newOnlineGHQGame,
   Player,
 } from "./game/engine";
-import { StorageAPI } from "boardgame.io";
-import Koa from "koa";
-import { createMatch } from "boardgame.io/src/server/util";
-import { Game as SrcGame } from "boardgame.io/src/types"; // TODO(tyler): tech debt
-import { nanoid } from "nanoid";
 import { createClient } from "@supabase/supabase-js";
 import { PostgresStore } from "bgio-postgres";
 import { calculateElo } from "./game/elo";
@@ -20,7 +15,7 @@ import { authMiddleware, clerkClient } from "./server/auth";
 import { TIME_CONTROLS } from "./game/constants";
 import { matchLifecycle } from "./server/match-lifecycle";
 import bodyParser from "koa-bodyparser";
-import { MatchModel, User } from "./lib/types";
+import { User } from "./lib/types";
 import {
   addUserToOnlineUsers,
   getUsersOnlineResponse,
@@ -146,53 +141,11 @@ async function runServer() {
       const user0 = await getOrCreateUser(player0);
       const user1 = await getOrCreateUser(player1);
 
-      // NB(tyler): For now, we only support V3 matches for unrated games.
-      if (!rated) {
-        await createNewV3Match({
-          user0,
-          user1,
-          timeControlName: mode,
-          timeControl,
-          isCorrespondence: false,
-          rated,
-        });
-        ctx.body = JSON.stringify({});
-        return;
-      }
-
-      const newMatch = await createNewMatch({
-        ctx,
-        db: server.db,
-        player0,
-        player1,
-        numPlayers: 2,
-        setupData: {
-          players: {
-            "0": player0,
-            "1": player1,
-          },
-          elos: {
-            "0": user0.elo,
-            "1": user1.elo,
-          },
-          timeControl: timeControl.time,
-          bonusTime: timeControl.bonus,
-          variant: timeControl?.variant,
-          rated,
-        },
-        unlisted: false,
-        game: ghqGame as SrcGame,
-      });
-      if (!newMatch) {
-        return;
-      }
-      const { matchId, player0Creds, player1Creds } = newMatch;
-      await createActiveMatches({
-        matchId,
+      await createNewV3Match({
         user0,
         user1,
-        player0Creds,
-        player1Creds,
+        timeControlName: mode,
+        timeControl,
         isCorrespondence: false,
         rated,
       });
@@ -321,109 +274,6 @@ async function runServer() {
   });
 
   server.run(Number(process.env.PORT) || 8000);
-
-  interface CreatedMatch {
-    matchId: string;
-    player0Creds: string;
-    player1Creds: string;
-  }
-
-  const createNewMatch = async ({
-    ctx,
-    db,
-    player0,
-    player1,
-    ...opts
-  }: {
-    db: StorageAPI.Sync | StorageAPI.Async;
-    player0: string;
-    player1: string;
-    ctx: Koa.BaseContext;
-  } & Parameters<typeof createMatch>[0]): Promise<CreatedMatch | null> => {
-    const matchId = nanoid();
-
-    opts.setupData.matchId = matchId;
-
-    const match = createMatch(opts);
-
-    if ("setupDataError" in match) {
-      ctx.throw(400, match.setupDataError);
-      return null;
-    } else {
-      // @ts-expect-error: not sure yet
-      await db.createMatch(matchId, match);
-
-      const { metadata } = await db.fetch(matchId, {
-        metadata: true,
-      });
-      if (!metadata) {
-        ctx.throw(404, "Match " + matchId + " not found");
-        return null;
-      }
-
-      const player0Creds = nanoid();
-      const player1Creds = nanoid();
-
-      metadata.players["0"].name = player0;
-      metadata.players["0"].credentials = player0Creds;
-      metadata.players["1"].name = player1;
-      metadata.players["1"].credentials = player1Creds;
-
-      await db.setMetadata(matchId, metadata);
-
-      return { matchId, player0Creds, player1Creds };
-    }
-  };
-
-  async function createActiveMatches({
-    matchId,
-    user0,
-    user1,
-    player0Creds,
-    player1Creds,
-    rated,
-    isCorrespondence = false,
-  }: {
-    matchId: string;
-    user0: User;
-    user1: User;
-    player0Creds: string;
-    player1Creds: string;
-    rated: boolean;
-    isCorrespondence: boolean;
-  }): Promise<void> {
-    const { error } = await supabase.from("active_user_matches").insert([
-      {
-        user_id: user0.id,
-        match_id: matchId,
-        player_id: "0",
-        credentials: player0Creds,
-        is_correspondence: isCorrespondence,
-      },
-      {
-        user_id: user1.id,
-        match_id: matchId,
-        player_id: "1",
-        credentials: player1Creds,
-        is_correspondence: isCorrespondence,
-      },
-    ]);
-    if (error) throw error;
-
-    const { error: matchError } = await supabase.from("matches").insert([
-      {
-        id: matchId,
-        player0_id: user0.id,
-        player1_id: user1.id,
-        player0_elo: user0.elo,
-        player1_elo: user1.elo,
-        current_turn_player_id: user0.id,
-        is_correspondence: isCorrespondence,
-        rated,
-      },
-    ]);
-    if (matchError) throw matchError;
-  }
 
   interface ActiveMatch {
     id: string;
@@ -810,71 +660,14 @@ async function runServer() {
       isRandomFirst ? userId : challenge.challenger_user_id
     );
 
-    if (!challenge.rated) {
-      await createNewV3Match({
-        user0,
-        user1,
-        timeControlName: "correspondence",
-        timeControl: TIME_CONTROLS.correspondence,
-        isCorrespondence: true,
-        rated: challenge.rated,
-        startingFen: challenge.fen,
-      });
-      const { error: updateError } = await supabase
-        .from("correspondence_challenges")
-        .delete()
-        .eq("challenger_user_id", challengerUserId)
-        .eq("target_user_id", userId);
-
-      if (updateError) {
-        console.log({
-          message: "Error updating challenge status",
-          error: updateError,
-        });
-        ctx.throw(400, "Error accepting challenge");
-      }
-      ctx.body = JSON.stringify({});
-      return;
-    }
-
-    const newMatch = await createNewMatch({
-      ctx,
-      db: server.db,
-      player0: challenge.challenger_user_id,
-      player1: userId,
-      numPlayers: 2,
-      setupData: {
-        players: {
-          "0": user0.id,
-          "1": user1.id,
-        },
-        elos: {
-          "0": user0.elo,
-          "1": user1.elo,
-        },
-        timeControl: TIME_CONTROLS.correspondence.time,
-        bonusTime: TIME_CONTROLS.correspondence.bonus,
-        fen: challenge.fen,
-      },
-      unlisted: false,
-      game: ghqGame as SrcGame,
-    });
-
-    if (!newMatch) {
-      ctx.throw(400, "Failed to create match");
-      return;
-    }
-
-    const { matchId, player0Creds, player1Creds } = newMatch;
-
-    await createActiveMatches({
-      matchId,
+    await createNewV3Match({
       user0,
       user1,
-      player0Creds,
-      player1Creds,
+      timeControlName: "correspondence",
+      timeControl: TIME_CONTROLS.correspondence,
       isCorrespondence: true,
       rated: challenge.rated,
+      startingFen: challenge.fen,
     });
 
     const { error: updateError } = await supabase
@@ -891,7 +684,7 @@ async function runServer() {
       ctx.throw(400, "Error accepting challenge");
     }
 
-    ctx.body = JSON.stringify({ matchId });
+    ctx.body = JSON.stringify({});
   });
 
   server.router.get("/correspondence/random-user", async (ctx) => {

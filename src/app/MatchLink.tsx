@@ -1,5 +1,6 @@
 "use client";
 
+import { matchPath } from "@/lib/match-engine";
 import { DateTime } from "luxon";
 import classNames from "classnames";
 import Link from "next/link";
@@ -9,7 +10,7 @@ import RatedBadge from "@/components/RatedBadge";
 export function MatchLink({ game }: { game: MatchModel }) {
   return (
     <Link
-      href={`/${game.rated === false ? "game" : "live"}/${game.id}`}
+      href={matchPath(game.id, game.engineVersion)}
       className="p-1 px-2 bg-white/50 dark:bg-muted border border-white/50 dark:border-border hover:border-blue-700 flex justify-between hover:bg-blue-100 dark:hover:bg-accent rounded flex-col sm:flex-row"
     >
       <div className="flex gap-1 items-center flex-wrap">

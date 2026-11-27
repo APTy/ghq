@@ -1,6 +1,7 @@
 import { ActiveMatch, MatchV3 } from "@/lib/types";
 
 export interface SupabaseMatch {
+  engine_version: 1 | 2;
   id: string;
   created_at: string;
   player0_id: string;
@@ -36,6 +37,7 @@ export function matchToSupabaseMatch(
   match: MatchV3
 ): Omit<SupabaseMatch, "created_at" | "winner_id" | "status"> {
   return {
+    engine_version: 2,
     id: match.id,
     player0_id: match.player0UserId,
     player1_id: match.player1UserId,
@@ -58,6 +60,7 @@ export function matchToSupabaseMatch(
 
 export function supabaseMatchToMatchV3(supabaseMatch: SupabaseMatch): MatchV3 {
   return {
+    engineVersion: 2,
     id: supabaseMatch.id,
     createdAt: supabaseMatch.created_at,
     player0UserId: supabaseMatch.player0_id,
