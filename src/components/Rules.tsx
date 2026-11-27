@@ -1,7 +1,5 @@
 "use client";
 
-import { BookText } from "lucide-react";
-
 export default function Rules() {
   return (
     <div className="flex flex-col gap-3 text-sm">
@@ -19,37 +17,16 @@ export default function Rules() {
         >
           Kurt Vonnegut
         </a>
-        .
-      </div>
-
-      <div>
-        The physical game was developed by Geoff Engelstein (see his great{" "}
-        <a
-          className="text-blue-600 dark:text-blue-400 hover:text-blue-400 dark:hover:text-blue-300"
-          href="https://www.youtube.com/watch?v=zfXPIhvFPjw"
-          target="_blank"
-        >
-          How To Play GHQ
-        </a>{" "}
-        video). Please support his work by{" "}
+        . The{" "}
         <a
           className="text-blue-600 dark:text-blue-400 hover:text-blue-400 dark:hover:text-blue-300"
           href="https://www.kvmlshop.org/product/kurt-vonnegut-the-lost-board-game-ghq/877"
           target="_blank"
         >
-          buying a copy
+          physical game
         </a>
-        .
-      </div>
-
-      <div>
-        <a
-          className="text-blue-600 dark:text-blue-400 hover:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1"
-          href="https://github.com/acunniffe/ghq/releases"
-          target="_blank"
-        >
-          📓 Release Notes
-        </a>
+        {" "}was developed by Geoff Engelstein. This online version is free and
+        open-source, built and maintained by Vonnegut and gaming enthusiasts.
       </div>
 
       <div>
